@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-on-background font-sans antialiased min-h-screen overflow-x-hidden;
+    background-color: #0b1326;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    background: rgba(23, 31, 51, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(133, 148, 139, 0.2);
+  }
+
+  .glass {
+    background: rgba(23, 31, 51, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(60, 74, 66, 0.3);
+  }
+
+  .glow-emerald {
+    box-shadow: 0 0 12px rgba(90, 240, 179, 0.2);
+  }
+
+  .glow-orange {
+    box-shadow: 0 0 20px rgba(227, 170, 0, 0.3);
+  }
+
+  .emerald-glow {
+    box-shadow: 0 0 12px rgba(90, 240, 179, 0.2);
+  }
+
+  .amber-glow {
+    box-shadow: 0 0 12px rgba(255, 198, 64, 0.2);
+  }
+
+  .terminal-scroll::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .terminal-scroll::-webkit-scrollbar-thumb {
+    background: #3c4a42;
+    border-radius: 2px;
+  }
+
+  .scanline::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: rgba(90, 240, 179, 0.1);
+    animation: scanline 8s linear infinite;
+  }
+}
