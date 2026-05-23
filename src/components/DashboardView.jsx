@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import AeroMap from './AeroMap';
 
 function DashboardView() {
@@ -8,6 +8,11 @@ function DashboardView() {
   // Camera state management
   const [capturedImage, setCapturedImage] = useState(null);
   const [cameraState, setCameraState] = useState('inactive'); // 'inactive' | 'linking' | 'active'
+
+  // Image Processing state
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const canvasRef = useRef(null);
 
   // Dynamic canvas mock photo generator (Skyline HUD builder)
   const generateMockPhoto = () => {
@@ -94,6 +99,108 @@ function DashboardView() {
     ctx.fill();
     
     return canvas.toDataURL('image/png');
+  };
+
+  // Trigger CV Particulate Heatmap processing when capturedImage updates
+  useEffect(() => {
+    if (!capturedImage) {
+      setIsProcessing(false);
+      setProcessingProgress(0);
+      return;
+    }
+
+    setIsProcessing(true);
+    setProcessingProgress(0);
+
+    const interval = setInterval(() => {
+      setProcessingProgress((prev) => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setIsProcessing(false);
+          // Small deferral to ensure canvas element is mounted and rendered inside state
+          setTimeout(() => {
+            drawHeatmap();
+          }, 50);
+          return 100;
+        }
+        return prev + 10;
+      });
+    }, 150);
+
+    return () => clearInterval(interval);
+  }, [capturedImage]);
+
+  // Dynamic canvas particulate overlay renderer
+  const drawHeatmap = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.src = capturedImage;
+    img.onload = () => {
+      // Set dimensions
+      canvas.width = 640;
+      canvas.height = 480;
+      
+      // 1. Draw raw city skyline frame
+      ctx.drawImage(img, 0, 0, 640, 480);
+      
+      // 2. Overlay heatmap blending layers
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      
+      // Orange toxic plume center
+      const grad1 = ctx.createRadialGradient(
+        320, 240, 20,
+        320, 240, 250
+      );
+      grad1.addColorStop(0, 'rgba(255, 198, 64, 0.9)'); // Amber
+      grad1.addColorStop(0.5, 'rgba(255, 166, 104, 0.5)'); // Orange
+      grad1.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad1;
+      ctx.beginPath();
+      ctx.arc(320, 240, 250, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // Red critical plume center
+      const grad2 = ctx.createRadialGradient(
+        180, 200, 10,
+        180, 200, 120
+      );
+      grad2.addColorStop(0, 'rgba(255, 180, 171, 0.9)'); // Red/Crimson
+      grad2.addColorStop(0.6, 'rgba(147, 0, 10, 0.4)');
+      grad2.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad2;
+      ctx.beginPath();
+      ctx.arc(180, 200, 120, 0, 2 * Math.PI);
+      ctx.fill();
+
+      ctx.restore();
+
+      // 3. Draw neon bounding analytical HUD grids
+      ctx.strokeStyle = '#ffa668'; // Orange outline
+      ctx.lineWidth = 3;
+      ctx.strokeRect(100, 120, 200, 150);
+      
+      ctx.fillStyle = 'rgba(255, 166, 104, 0.85)';
+      ctx.font = 'bold 12px monospace';
+      ctx.fillRect(100, 95, 140, 25);
+      ctx.fillStyle = '#0b1326';
+      ctx.fillText('ANALYTICS: 182 AQI', 108, 112);
+
+      // Nominals box
+      ctx.strokeStyle = '#5af0b3'; // Emerald outline
+      ctx.strokeRect(420, 160, 150, 180);
+      
+      ctx.fillStyle = 'rgba(90, 240, 179, 0.85)';
+      ctx.fillRect(420, 135, 100, 25);
+      ctx.fillStyle = '#0b1326';
+      ctx.fillText('ZONE NOMINAL', 428, 152);
+
+      // Target laser watermark
+      ctx.fillStyle = 'rgba(90, 240, 179, 0.7)';
+      ctx.fillText('NEURAL MAPPING - COMPLETE (USEPA v4)', 20, 440);
+    };
   };
 
   const handleLaunchCamera = () => {
@@ -229,7 +336,7 @@ function DashboardView() {
                   <span className="material-symbols-outlined text-primary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
                   <div className="flex-1">
                     <p className="font-mono text-[9px] text-primary font-bold uppercase tracking-wider">Telemetry Sample Secured</p>
-                    <p className="text-[10px] text-on-surface-variant font-mono">Format: base64 image/png (640x480)</p>
+                    <p className="text-[10px] text-on-surface-variant font-mono">Format: base64 Image Data Link</p>
                   </div>
                 </div>
 
@@ -350,7 +457,7 @@ function DashboardView() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
             {/* Left Frame: Raw captured image */}
-            <div className="relative rounded-xl overflow-hidden glass-panel h-48 border border-primary/20 flex flex-col justify-center items-center">
+            <div className="relative rounded-xl overflow-hidden glass-panel h-48 border border-primary/20 flex flex-col justify-center items-center bg-surface-container-lowest/30">
               <img src={capturedImage} alt="Raw Captured Frame" className="w-full h-full object-cover opacity-90" />
               <div className="absolute top-2 left-2 flex items-center gap-2 bg-background/80 px-2 py-1 rounded border border-outline-variant/30 z-20">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
@@ -363,23 +470,34 @@ function DashboardView() {
 
             {/* Right Frame: Processing Canvas area */}
             <div className="relative rounded-xl overflow-hidden glass-panel h-48 border border-secondary/20 bg-surface-container-lowest/30 flex flex-col justify-center items-center">
-              <div className="absolute inset-0 opacity-15 animate-pulse" style={{ backgroundImage: 'radial-gradient(#ffa668 1.2px, transparent 1.2px)', backgroundSize: '16px 16px' }}></div>
               
-              {/* HTML5 Canvas element ready for neural maps overlays */}
-              <canvas id="neural-overlay-canvas" className="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+              {isProcessing ? (
+                /* Processing State with progress bar */
+                <div className="z-10 text-center space-y-3 p-4 w-full max-w-xs select-none">
+                  <span className="material-symbols-outlined text-secondary text-2xl animate-spin">sync</span>
+                  <p className="font-mono text-[10px] text-secondary tracking-widest block uppercase font-bold">Neural Engine Analysis...</p>
+                  
+                  {/* Progress Bar */}
+                  <div className="w-full bg-surface-container-high h-2.5 rounded-full overflow-hidden border border-outline-variant/20 relative">
+                    <div className="bg-gradient-to-r from-secondary to-primary h-full transition-all duration-150" style={{ width: `${processingProgress}%` }}></div>
+                  </div>
+                  <span className="font-mono text-[10px] text-secondary font-bold">{processingProgress}% Complete</span>
+                </div>
+              ) : (
+                /* Complete State: Real Canvas rendering */
+                <>
+                  {/* The actual Canvas */}
+                  <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-cover"></canvas>
+                  
+                  <div className="absolute top-2 left-2 flex items-center gap-2 bg-secondary/90 px-2 py-1 rounded border border-on-secondary/30 z-20">
+                    <span className="font-mono text-[8px] uppercase text-on-secondary font-bold">Neural_Map_Active</span>
+                  </div>
+                  <div className="absolute bottom-2 right-2 z-20 bg-background/80 px-2 py-0.5 rounded border border-outline-variant/20">
+                    <span className="font-mono text-[8px] text-primary font-bold">SCAN COMPLETE</span>
+                  </div>
+                </>
+              )}
 
-              <div className="z-10 text-center space-y-2 pointer-events-none p-4">
-                <span className="material-symbols-outlined text-secondary text-2xl animate-spin" style={{ animationDuration: '4s' }}>schema</span>
-                <p className="font-mono text-[10px] text-secondary tracking-widest block uppercase font-bold">Neural Interface Processing</p>
-                <p className="text-[10px] text-on-surface-variant/80 max-w-xs">Computer Vision Particulate Mapping</p>
-              </div>
-              
-              <div className="absolute top-2 left-2 flex items-center gap-2 bg-secondary/90 px-2 py-1 rounded border border-on-secondary/30 z-20">
-                <span className="font-mono text-[8px] uppercase text-on-secondary font-bold">Neural_Map_Ready</span>
-              </div>
-              <div className="absolute bottom-2 right-2 z-20">
-                <span className="font-mono text-[8px] text-on-surface-variant/60">AWAITING ANALYTICS RUN</span>
-              </div>
             </div>
 
           </div>
