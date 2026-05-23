@@ -155,16 +155,46 @@ function DashboardView() {
       const imgData = offscreenCtx.getImageData(0, 0, 160, 120);
       const data = imgData.data;
       
-      // Pass 1: Compute Dark Channel Prior (DCP) matrix: Math.min(r, g, b)
-      const dcpMatrix = new Uint8Array(160 * 120);
+      // Pass 1: Compute pixel-wise min channel & clear sky check arrays
+      const minChannel = new Uint8Array(160 * 120);
+      const isClearSky = new Uint8Array(160 * 120);
+      
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i];
         const g = data[i + 1];
         const b = data[i + 2];
-        dcpMatrix[i / 4] = Math.min(r, g, b);
+        const idx = i / 4;
+        
+        minChannel[idx] = Math.min(r, g, b);
+        
+        // Sky mask filter: Clear sunny skies present highly positive (Blue - Red) difference and Blue > Green
+        // We set a flag to force pollution density to 0.0 later
+        isClearSky[idx] = (b - r > 20 && b > g) ? 1 : 0;
       }
       
-      // Pass 2: Apply 8x8 Tile grid CLAHE adaptive contrast-limiting equalization
+      // Pass 2: Calculate true physical Dark Channel Prior (DCP) using a local 15x15 pixel window slide
+      const dcpMatrix = new Uint8Array(160 * 120);
+      const wSize = 7; // Radius of 15x15 window (dx/dy in -7..7)
+      
+      for (let y = 0; y < 120; y++) {
+        for (let x = 0; x < 160; x++) {
+          let minNeighborhoodVal = 255;
+          
+          for (let dy = -wSize; dy <= wSize; dy++) {
+            for (let dx = -wSize; dx <= wSize; dx++) {
+              const nx = Math.min(159, Math.max(0, x + dx));
+              const ny = Math.min(119, Math.max(0, y + dy));
+              const val = minChannel[ny * 160 + nx];
+              if (val < minNeighborhoodVal) {
+                minNeighborhoodVal = val;
+              }
+            }
+          }
+          dcpMatrix[y * 160 + x] = minNeighborhoodVal;
+        }
+      }
+      
+      // Pass 3: Apply 8x8 Tile grid CLAHE adaptive contrast-limiting equalization
       // Image size: 160x120. 8x8 grid -> Tile width = 20 pixels, Tile height = 15 pixels.
       const claheMatrix = new Uint8Array(160 * 120);
       const tileWidth = 20;
@@ -172,7 +202,6 @@ function DashboardView() {
       const tilesX = 8;
       const tilesY = 8;
       
-      // Loop over each of the 8x8 blocks
       for (let ty = 0; ty < tilesY; ty++) {
         for (let tx = 0; tx < tilesX; tx++) {
           const startX = tx * tileWidth;
@@ -191,7 +220,7 @@ function DashboardView() {
             }
           }
           
-          // Compute equalization scale with custom Clip Limit simulation (limit scale factor to 2.0 to prevent over-stretching noise)
+          // Compute equalization scale with strict Clip Limit factor of 2.0 to prevent noise over-amplification
           const range = localMax - localMin;
           const clipLimit = 2.0;
           let scaleFactor = range > 0 ? 255 / range : 0;
@@ -212,48 +241,58 @@ function DashboardView() {
         }
       }
       
-      // Pass 3: Translate spatial metrics into Jet Colormap array layer
+      // Pass 4: Translate spatial metrics into Jet Colormap array layer incorporating clear sky masks
       const heatmapImgData = offscreenCtx.createImageData(160, 120);
       const hData = heatmapImgData.data;
       
       for (let i = 0; i < claheMatrix.length; i++) {
-        const v = claheMatrix[i]; // Value is in [0, 255]
+        // Calculate pollution density coefficient: 0.0 (clear weather) to 1.0 (heavy smog)
+        let density = claheMatrix[i] / 255.0;
         
-        // Jet Colormap mapping:
-        // Low DCP (clear air) -> deep Blue/Cyan
-        // High DCP (light scattered by dense smog/particles) -> Crimson Red
+        // Apply clear blue sky mask filtering: force clear sky areas to 0.0 density
+        if (isClearSky[i] === 1) {
+          density = 0.0;
+        }
+        
+        // Continuous linear Jet Colormap interpolation:
+        // density: 0.0 -> deep Blue/Cyan clear air layers
+        // density: 1.0 -> glowing Crimson Red heavy dust/smog pockets
         let r = 0, g = 0, b = 0;
         
-        if (v < 64) {
-          // Blue to Cyan
+        if (density < 0.25) {
+          // 0.0 to 0.25: deep Blue to Cyan
+          const factor = density / 0.25;
           r = 0;
-          g = Math.round(v * 4);
+          g = Math.round(factor * 255);
           b = 255;
-        } else if (v < 128) {
-          // Cyan to Green
+        } else if (density < 0.5) {
+          // 0.25 to 0.5: Cyan to Green
+          const factor = (density - 0.25) / 0.25;
           r = 0;
           g = 255;
-          b = Math.round(255 - (v - 64) * 4);
-        } else if (v < 192) {
-          // Green to Orange
-          r = Math.round((v - 128) * 4);
-          g = Math.round(255 - (v - 128) * 2);
+          b = Math.round(255 - factor * 255);
+        } else if (density < 0.75) {
+          // 0.5 to 0.75: Green to Yellow/Orange
+          const factor = (density - 0.5) / 0.25;
+          r = Math.round(factor * 255);
+          g = Math.round(255 - factor * 128);
           b = 0;
         } else {
-          // Orange to Crimson Red
+          // 0.75 to 1.0: Orange to Crimson Red
+          const factor = (density - 0.75) / 0.25;
           r = 255;
-          g = Math.round(128 - (v - 192) * 2);
-          b = Math.round((v - 192) * 0.8);
+          g = Math.round(127 - factor * 127);
+          b = Math.round(factor * 50);
         }
         
         const hIdx = i * 4;
         hData[hIdx] = r;
         hData[hIdx + 1] = g;
         hData[hIdx + 2] = b;
-        hData[hIdx + 3] = 255; // Full alpha for processing, globalAlpha will handle overlay blending
+        hData[hIdx + 3] = 255; // Full alpha for offscreen blend, globalAlpha handles final composite opacity
       }
       
-      // Draw processed heatmap back onto the offscreen canvas
+      // Draw processed masked heatmap back onto the offscreen canvas
       offscreenCtx.putImageData(heatmapImgData, 0, 0);
       
       // 3. Composite this array layer back onto the main canvas with a globalAlpha of 0.45
@@ -275,9 +314,9 @@ function DashboardView() {
       
       ctx.fillStyle = 'rgba(255, 166, 104, 0.85)';
       ctx.font = 'bold 12px monospace';
-      ctx.fillRect(100, 95, 155, 25);
+      ctx.fillRect(100, 95, 175, 25);
       ctx.fillStyle = '#0b1326';
-      ctx.fillText('DCP ANALYTICS: 182 AQI', 105, 112);
+      ctx.fillText('NEURAL DCP ANALYTICS', 105, 112);
 
       // Nominals box
       ctx.strokeStyle = '#5af0b3'; // Emerald outline
@@ -290,7 +329,7 @@ function DashboardView() {
 
       // Target laser watermark
       ctx.fillStyle = 'rgba(90, 240, 179, 0.75)';
-      ctx.fillText('DCP & CLAHE OPTICAL ENGINE - ACTIVE v2.0', 20, 440);
+      ctx.fillText('NEURAL DCP & CLAHE SPATIAL ENGINE - ACTIVE v3.0', 20, 440);
     };
   };
 
