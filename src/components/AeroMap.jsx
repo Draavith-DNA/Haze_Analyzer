@@ -47,23 +47,8 @@ const darkMapStyle = [
   },
 ];
 
-// Fallback coordinate mapping for common Indian districts to ensure absolute robustness
-const districtCoordinatesFallback = {
-  "DELHI": { lat: 28.6139, lng: 77.2090 },
-  "NEW DELHI": { lat: 28.6139, lng: 77.2090 },
-  "MUMBAI": { lat: 18.9220, lng: 72.8347 },
-  "BENGALURU": { lat: 12.9716, lng: 77.5946 },
-  "BANGALORE": { lat: 12.9716, lng: 77.5946 },
-  "KOLKATA": { lat: 22.5726, lng: 88.3639 },
-  "HYDERABAD": { lat: 17.3850, lng: 78.4867 },
-  "CHENNAI": { lat: 13.0827, lng: 80.2707 },
-  "PUNE": { lat: 18.5204, lng: 73.8567 },
-  "AHMEDABAD": { lat: 23.0225, lng: 72.5714 },
-  "JAIPUR": { lat: 26.9124, lng: 75.7873 },
-  "LUCKNOW": { lat: 26.8467, lng: 80.9462 }
-};
 
-function AeroMap({ pinCode, onRegionResolved }) {
+function AeroMap({ pinCode, district, state, coordinates }) {
   const mapRef = useRef(null);
   const [mapInstance, setMapInstance] = useState(null);
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
@@ -237,57 +222,19 @@ function AeroMap({ pinCode, onRegionResolved }) {
     }
   };
 
-  // Asynchronous Geolocation resolution when 6-digit PIN is entered
+  // Synchronous viewport coordinates update listening directly to optimized prop
   useEffect(() => {
-    if (!pinCode || pinCode.length !== 6) return;
-
-    const resolvePinCode = async () => {
-      try {
-        const response = await fetch(`https://api.postalpincode.in/pincode/${pinCode}`);
-        const data = await response.json();
-
-        if (Array.isArray(data) && data[0]?.Status === "Success" && data[0]?.PostOffice?.length > 0) {
-          const office = data[0].PostOffice[0];
-          const resolvedRegionName = `${office.District}, ${office.State}`;
-          
-          if (onRegionResolved) {
-            onRegionResolved(resolvedRegionName);
-          }
-
-          // Move map camera to coordinates
-          if (window.google && mapInstance) {
-            const districtUpper = office.District.toUpperCase();
-            
-            // Check fallback dictionary first for rapid, offline-proof snap
-            if (districtCoordinatesFallback[districtUpper]) {
-              const coords = districtCoordinatesFallback[districtUpper];
-              mapInstance.panTo(coords);
-              mapInstance.setZoom(11);
-            } else {
-              // Try Geocoder service
-              const geocoder = new window.google.maps.Geocoder();
-              geocoder.geocode({ address: `${office.District}, ${office.State}, India` }, (results, status) => {
-                if (status === "OK" && results[0]) {
-                  const loc = results[0].geometry.location;
-                  mapInstance.panTo(loc);
-                  mapInstance.setZoom(11);
-                } else {
-                  console.warn("Maps Geocoder failed. Panning to central grid.");
-                  // Fail gracefully back to central India
-                  mapInstance.panTo({ lat: 20.5937, lng: 78.9629 });
-                  mapInstance.setZoom(6);
-                }
-              });
-            }
-          }
-        }
-      } catch (e) {
-        console.error("Postal API geocoding failure:", e);
+    if (window.google && mapInstance) {
+      if (coordinates) {
+        mapInstance.panTo({ lat: coordinates.lat, lng: coordinates.lng });
+        mapInstance.setZoom(coordinates.zoom || 11);
+      } else {
+        // Safe default: Center of India
+        mapInstance.panTo({ lat: 20.5937, lng: 78.9629 });
+        mapInstance.setZoom(5);
       }
-    };
-
-    resolvePinCode();
-  }, [pinCode, mapInstance]);
+    }
+  }, [coordinates, mapInstance]);
 
   // Handle fallback rendering if keys are empty or maps fails to load
   if (loadError || !googleMapsKey) {
