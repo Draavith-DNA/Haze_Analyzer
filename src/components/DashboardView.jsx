@@ -796,7 +796,7 @@ Respond to the user's question concisely in 2-3 sentences.`;
   // Generate AI Diagnosis report when predictedAQI or nearestStationAQI resolves
   useEffect(() => {
     if (predictedAQI === null) {
-      setAiReport('');
+      setAiReport('Awaiting atmospheric telemetry data. Please upload/capture a skyline photo in Section 1 to trigger real-time neural diagnostics.');
       setChatMessages([]);
       return;
     }
@@ -936,320 +936,335 @@ Respond to the user's question concisely in 2-3 sentences.`;
   };
 
   return (
-    <div className="max-w-container-max mx-auto px-margin-mobile space-y-gutter py-6">
+    <div className="max-w-container-max mx-auto px-margin-mobile space-y-16 py-6 scroll-smooth">
       
-      {/* Hero Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-gutter">
-        
-        {/* Card 1: Live Air Sampling & Location */}
-        <div className="space-y-4">
-          
-          <div className="glass-panel rounded-xl p-5 space-y-4 overflow-hidden relative">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="font-mono text-label-caps text-on-surface-variant mb-1 uppercase tracking-tighter">Live Air Sampling</p>
-                <h2 className="font-headline text-2xl text-on-surface font-semibold tracking-tighter">Optical Telemetry</h2>
+      {/* SECTION 1: Dashboard Landing & Core AQI Estimator */}
+      <section id="estimator-section" className="space-y-6 min-h-[85vh] flex flex-col justify-center">
+        {/* Educational Info Header */}
+        <div className="glass-panel p-6 rounded-2xl border border-outline-variant/10 relative overflow-hidden bg-surface-container-lowest/20">
+          <div className="absolute inset-0 opacity-5 bg-[radial-gradient(#ffffff_1.2px,transparent_1.2px)] [background-size:16px_16px]"></div>
+          <div className="relative z-10 space-y-3">
+            <div className="flex items-center gap-2 text-primary">
+              <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>insights</span>
+              <span className="font-mono text-label-caps text-xs uppercase tracking-widest font-bold">Atmospheric Intelligence Platform</span>
+            </div>
+            <h1 className="font-headline text-3xl font-bold tracking-tighter text-on-surface">
+              AeroSight Haze Analyzer & AQI Estimator
+            </h1>
+            <p className="text-on-surface-variant text-sm max-w-4xl leading-relaxed">
+              Air Quality Index (AQI) is a standard scale from <strong>0 to 500</strong> used to measure air pollution levels. Higher values indicate greater particulate density (PM2.5 & PM10) and increased health risks. 
+              AeroSight utilizes custom <strong>Dark Channel Prior (DCP)</strong> computer vision algorithms to capture atmospheric haze density, combined with a <strong>Neural Network regression model</strong> running on TensorFlow.js to estimate AQI in real-time.
+            </p>
+          </div>
+        </div>
+
+        {/* Core Estimator Layout Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-gutter">
+          {/* Card 1: Live Air Sampling & Location Inputs */}
+          <div className="space-y-4">
+            <div className="glass-panel rounded-xl p-5 space-y-4 overflow-hidden relative">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-mono text-label-caps text-on-surface-variant mb-1 uppercase tracking-tighter">Live Air Sampling</p>
+                  <h2 className="font-headline text-xl text-on-surface font-semibold tracking-tighter">Optical Telemetry</h2>
+                </div>
+                <span className="material-symbols-outlined text-primary opacity-50 text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>photo_camera</span>
               </div>
-              <span className="material-symbols-outlined text-primary opacity-50 text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>photo_camera</span>
+
+              {cameraState === 'inactive' && !capturedImage && (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button 
+                    onClick={handleLaunchCamera}
+                    className="flex-grow bg-primary text-on-primary py-4 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform glow-emerald hover:bg-primary-container"
+                  >
+                    <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>videocam</span>
+                    Launch Camera
+                  </button>
+                  <label className="flex-grow bg-surface-container-high border border-outline-variant/30 text-on-surface-variant py-4 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform hover:bg-surface-variant cursor-pointer text-center select-none">
+                    <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>upload_file</span>
+                    Upload File
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleFileUpload} 
+                      className="hidden" 
+                    />
+                  </label>
+                </div>
+              )}
+
+              {cameraState === 'linking' && (
+                <div className="w-full bg-surface-container py-4 rounded-lg font-bold flex items-center justify-center gap-2 border border-outline-variant/30 text-primary">
+                  <span className="material-symbols-outlined animate-spin text-xl">sync</span>
+                  Linking Telemetry...
+                </div>
+              )}
+
+              {cameraState === 'active' && (
+                <div className="space-y-4">
+                  {/* Viewfinder: Real Video Stream or Simulator Fallback */}
+                  <div className="relative rounded-lg overflow-hidden h-52 border border-primary/30 bg-surface-container-lowest/50 flex flex-col justify-center items-center">
+                    {cameraStreamActive ? (
+                      <video 
+                        ref={videoRef} 
+                        autoPlay 
+                        playsInline 
+                        muted
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <>
+                        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1.2px,transparent_1.2px)] [background-size:12px_12px]"></div>
+                        <span className="material-symbols-outlined text-primary text-3xl animate-pulse" style={{ fontVariationSettings: "'FILL' 1" }}>center_focus_strong</span>
+                        <span className="font-mono text-[9px] text-primary/60 mt-1 uppercase tracking-widest animate-pulse">Simulator Active</span>
+                      </>
+                    )}
+                    
+                    {/* Viewfinder Overlay telemetry */}
+                    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-3">
+                      <div className="flex justify-between items-start">
+                        <span className="font-mono text-[8px] text-primary/80 bg-[#0b1326]/60 px-1.5 py-0.5 rounded border border-primary/25 uppercase tracking-widest">
+                          {cameraStreamActive ? 'Live Camera Feed' : 'Simulator Mode'}
+                        </span>
+                        {cameraError && (
+                          <span className="font-mono text-[8px] text-error bg-[#0b1326]/60 px-1.5 py-0.5 rounded border border-error/25 uppercase">
+                            {cameraError}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* HUD Reticle */}
+                      <div className="self-center flex items-center justify-center relative w-full h-[60%]">
+                        <div className="absolute top-[20%] w-[80%] h-[1px] bg-primary/25 border-dashed border-b"></div>
+                        <div className="absolute top-[80%] w-[80%] h-[1px] bg-primary/25 border-dashed border-b"></div>
+                        <div className="absolute left-[20%] h-[80%] w-[1px] bg-primary/25 border-dashed border-r"></div>
+                        <div className="absolute left-[80%] h-[80%] w-[1px] bg-primary/25 border-dashed border-r"></div>
+                        <span className="material-symbols-outlined text-primary text-xl opacity-60">add</span>
+                      </div>
+                      
+                      <span className="font-mono text-[7px] text-on-surface-variant/60 uppercase tracking-tighter">
+                        FACING_MODE: ENVIRONMENT
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={handleCapturePhoto}
+                      className="flex-1 bg-secondary text-on-secondary py-3 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform hover:bg-secondary-container shadow-lg shadow-secondary/15"
+                    >
+                      <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>photo_camera</span>
+                      Capture Frame
+                    </button>
+                    <button 
+                      onClick={handleCancelCamera}
+                      className="px-4 bg-surface-container-high text-on-surface-variant py-3 rounded-lg font-semibold active:scale-95 transition-transform hover:bg-surface-variant"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {capturedImage && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 bg-primary/10 p-3 rounded-lg border border-primary/20">
+                    <span className="material-symbols-outlined text-primary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                    <div className="flex-1">
+                      <p className="font-mono text-[9px] text-primary font-bold uppercase tracking-wider">Telemetry Sample Secured</p>
+                      <p className="text-[10px] text-on-surface-variant font-mono">Format: base64 Image Data Link</p>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={handleResetCamera}
+                    className="w-full bg-surface-container-high text-on-surface-variant py-3 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform hover:bg-surface-variant"
+                  >
+                    <span className="material-symbols-outlined text-xl">restart_alt</span>
+                    Retake Photo / Clear Feed
+                  </button>
+                </div>
+              )}
+
+              <div className="flex items-start gap-2 bg-primary/10 p-3 rounded-lg border border-primary/20">
+                <span className="material-symbols-outlined text-primary text-sm mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                <p className="font-sans text-[11px] leading-tight text-primary/90">
+                  Real-time visual data capture or verified system telemetry file uploads are fully supported.
+                </p>
+              </div>
             </div>
 
-            {cameraState === 'inactive' && !capturedImage && (
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button 
-                  onClick={handleLaunchCamera}
-                  className="flex-grow bg-primary text-on-primary py-4 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform glow-emerald hover:bg-primary-container"
-                >
-                  <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>videocam</span>
-                  Launch Camera
-                </button>
-                <label className="flex-grow bg-surface-container-high border border-outline-variant/30 text-on-surface-variant py-4 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform hover:bg-surface-variant cursor-pointer text-center select-none">
-                  <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>upload_file</span>
-                  Upload File
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    onChange={handleFileUpload} 
-                    className="hidden" 
-                  />
-                </label>
+            {/* Location Context */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="glass-panel rounded-lg p-3">
+                <label className="font-mono text-label-caps text-on-surface-variant mb-2 block uppercase">PIN Code</label>
+                <input 
+                  className="w-full bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-mono text-data-sm text-primary focus:border-primary outline-none transition-colors" 
+                  placeholder="Enter PIN" 
+                  type="text" 
+                  value={pinCode}
+                  onChange={handlePinChange}
+                />
               </div>
-            )}
-
-            {cameraState === 'linking' && (
-              <div className="w-full bg-surface-container py-4 rounded-lg font-bold flex items-center justify-center gap-2 border border-outline-variant/30 text-primary">
-                <span className="material-symbols-outlined animate-spin text-xl">sync</span>
-                Linking Telemetry...
+              <div className="glass-panel rounded-lg p-3">
+                <label className="font-mono text-label-caps text-on-surface-variant mb-2 block uppercase">District</label>
+                <div className={`w-full bg-surface-container-lowest/50 border border-outline-variant/50 rounded px-2 py-1 font-mono text-data-sm select-none transition-colors ${
+                  district === 'Invalid PIN' 
+                    ? 'text-error font-bold' 
+                    : (district && district !== 'Awaiting PIN...' && district !== 'Resolving...' ? 'text-primary font-semibold' : 'text-on-surface-variant/40')
+                }`}>
+                  {district}
+                </div>
               </div>
-            )}
+              <div className="glass-panel rounded-lg p-3">
+                <label className="font-mono text-label-caps text-on-surface-variant mb-2 block uppercase">State</label>
+                <div className={`w-full bg-surface-container-lowest/50 border border-outline-variant/50 rounded px-2 py-1 font-mono text-data-sm select-none transition-colors ${
+                  state === 'Invalid PIN' 
+                    ? 'text-error font-bold' 
+                    : (state && state !== 'Awaiting PIN...' && state !== 'Resolving...' ? 'text-primary font-semibold' : 'text-on-surface-variant/40')
+                }`}>
+                  {state}
+                </div>
+              </div>
+            </div>
+          </div>
 
-            {cameraState === 'active' && (
-              <div className="space-y-4">
-                {/* Viewfinder: Real Video Stream or Simulator Fallback */}
-                <div className="relative rounded-lg overflow-hidden h-52 border border-primary/30 bg-surface-container-lowest/50 flex flex-col justify-center items-center">
-                  {cameraStreamActive ? (
-                    <video 
-                      ref={videoRef} 
-                      autoPlay 
-                      playsInline 
-                      muted
-                      className="w-full h-full object-cover"
-                    />
+          {/* Card 2: Estimator & Classifier (Neural Network circular gauge) */}
+          <div className="glass-panel rounded-xl p-5 flex flex-col items-center justify-between">
+            <div className="w-full">
+              <p className="font-mono text-label-caps text-on-surface-variant mb-4 uppercase">Estimator & Classifier Inference</p>
+            </div>
+            
+            <div className="relative w-48 h-48 flex items-center justify-center animate-fade-in my-auto">
+              <div className={`w-full h-full rounded-full flex items-center justify-center border-8 transition-all duration-500 relative ${
+                predictedAQI === null 
+                  ? 'border-surface-container glow-gray' 
+                  : predictedAQI <= 50 
+                    ? 'border-primary/40 glow-emerald' 
+                    : predictedAQI <= 100 
+                      ? 'border-secondary/40 glow-orange' 
+                      : predictedAQI <= 200 
+                        ? 'border-tertiary-container/40 glow-orange' 
+                        : 'border-error/40 glow-error'
+              }`}
+                   style={{
+                     background: 'radial-gradient(closest-side, #0b1326 79%, transparent 80% 100%)',
+                     borderColor: predictedAQI === null ? '#171f33' : undefined
+                   }}>
+                
+                <div className={`absolute inset-0 rounded-full border-8 border-transparent opacity-80 rotate-45 transition-all duration-500 ${
+                  predictedAQI === null 
+                    ? 'border-t-outline-variant border-r-outline-variant' 
+                    : predictedAQI <= 50 
+                      ? 'border-t-primary border-r-primary' 
+                      : predictedAQI <= 100 
+                        ? 'border-t-secondary border-r-secondary' 
+                        : predictedAQI <= 200 
+                          ? 'border-t-tertiary-container border-r-tertiary-container' 
+                          : 'border-t-error border-r-error'
+                }`}></div>
+
+                <div className="flex flex-col items-center z-10 text-center px-4">
+                  {predictedAQI === null ? (
+                    <span className="font-mono text-[10px] font-bold text-on-surface-variant uppercase tracking-wider animate-pulse">Awaiting Telemetry...</span>
                   ) : (
                     <>
-                      <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1.2px,transparent_1.2px)] [background-size:12px_12px]"></div>
-                      <span className="material-symbols-outlined text-primary text-3xl animate-pulse" style={{ fontVariationSettings: "'FILL' 1" }}>center_focus_strong</span>
-                      <span className="font-mono text-[9px] text-primary/60 mt-1 uppercase tracking-widest animate-pulse">Simulator Active</span>
+                      <span className={`font-headline text-[44px] font-bold leading-none transition-colors duration-500 ${
+                        predictedAQI <= 50 
+                          ? 'text-primary' 
+                          : predictedAQI <= 100 
+                            ? 'text-secondary' 
+                            : predictedAQI <= 200 
+                              ? 'text-tertiary-container' 
+                              : 'text-error'
+                      }`}>{predictedAQI}</span>
+                      <span className={`font-mono text-[9px] font-bold uppercase tracking-[0.2em] mt-1 transition-colors duration-500 ${
+                        predictedAQI <= 50 
+                          ? 'text-primary' 
+                          : predictedAQI <= 100 
+                            ? 'text-secondary' 
+                            : predictedAQI <= 200 
+                              ? 'text-tertiary-container' 
+                              : 'text-error'
+                      }`}>
+                        {predictedAQI <= 50 
+                          ? 'Good' 
+                          : predictedAQI <= 100 
+                            ? 'Moderate' 
+                            : predictedAQI <= 200 
+                              ? 'Poor' 
+                              : 'Hazardous'}
+                      </span>
                     </>
                   )}
-                  
-                  {/* Viewfinder Overlay telemetry */}
-                  <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-3">
-                    <div className="flex justify-between items-start">
-                      <span className="font-mono text-[8px] text-primary/80 bg-[#0b1326]/60 px-1.5 py-0.5 rounded border border-primary/25 uppercase tracking-widest">
-                        {cameraStreamActive ? 'Live Camera Feed' : 'Simulator Mode'}
-                      </span>
-                      {cameraError && (
-                        <span className="font-mono text-[8px] text-error bg-[#0b1326]/60 px-1.5 py-0.5 rounded border border-error/25 uppercase">
-                          {cameraError}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* HUD Reticle */}
-                    <div className="self-center flex items-center justify-center relative w-full h-[60%]">
-                      <div className="absolute top-[20%] w-[80%] h-[1px] bg-primary/25 border-dashed border-b"></div>
-                      <div className="absolute top-[80%] w-[80%] h-[1px] bg-primary/25 border-dashed border-b"></div>
-                      <div className="absolute left-[20%] h-[80%] w-[1px] bg-primary/25 border-dashed border-r"></div>
-                      <div className="absolute left-[80%] h-[80%] w-[1px] bg-primary/25 border-dashed border-r"></div>
-                      <span className="material-symbols-outlined text-primary text-xl opacity-60">add</span>
-                    </div>
-                    
-                    <span className="font-mono text-[7px] text-on-surface-variant/60 uppercase tracking-tighter">
-                      FACING_MODE: ENVIRONMENT
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <button 
-                    onClick={handleCapturePhoto}
-                    className="flex-1 bg-secondary text-on-secondary py-3 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform hover:bg-secondary-container shadow-lg shadow-secondary/15"
-                  >
-                    <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>photo_camera</span>
-                    Capture Frame
-                  </button>
-                  <button 
-                    onClick={handleCancelCamera}
-                    className="px-4 bg-surface-container-high text-on-surface-variant py-3 rounded-lg font-semibold active:scale-95 transition-transform hover:bg-surface-variant"
-                  >
-                    Cancel
-                  </button>
                 </div>
               </div>
-            )}
 
-            {capturedImage && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 bg-primary/10 p-3 rounded-lg border border-primary/20">
-                  <span className="material-symbols-outlined text-primary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                  <div className="flex-1">
-                    <p className="font-mono text-[9px] text-primary font-bold uppercase tracking-wider">Telemetry Sample Secured</p>
-                    <p className="text-[10px] text-on-surface-variant font-mono">Format: base64 Image Data Link</p>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={handleResetCamera}
-                  className="w-full bg-surface-container-high text-on-surface-variant py-3 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform hover:bg-surface-variant"
-                >
-                  <span className="material-symbols-outlined text-xl">restart_alt</span>
-                  Retake Photo / Clear Feed
-                </button>
-              </div>
-            )}
-
-            <div className="flex items-start gap-2 bg-primary/10 p-3 rounded-lg border border-primary/20">
-              <span className="material-symbols-outlined text-primary text-sm mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-              <p className="font-sans text-[11px] leading-tight text-primary/90">
-                Real-time visual data capture or verified system telemetry file uploads are fully supported.
-              </p>
-            </div>
-          </div>
-
-          {/* Location Context */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="glass-panel rounded-lg p-3">
-              <label className="font-mono text-label-caps text-on-surface-variant mb-2 block uppercase">PIN Code</label>
-              <input 
-                className="w-full bg-surface-container-lowest border border-outline-variant rounded px-2 py-1 font-mono text-data-sm text-primary focus:border-primary outline-none transition-colors" 
-                placeholder="Enter PIN" 
-                type="text" 
-                value={pinCode}
-                onChange={handlePinChange}
-              />
-            </div>
-            <div className="glass-panel rounded-lg p-3">
-              <label className="font-mono text-label-caps text-on-surface-variant mb-2 block uppercase">District</label>
-              <div className={`w-full bg-surface-container-lowest/50 border border-outline-variant/50 rounded px-2 py-1 font-mono text-data-sm select-none transition-colors ${
-                district === 'Invalid PIN' 
-                  ? 'text-error font-bold' 
-                  : (district && district !== 'Awaiting PIN...' && district !== 'Resolving...' ? 'text-primary font-semibold' : 'text-on-surface-variant/40')
-              }`}>
-                {district}
-              </div>
-            </div>
-            <div className="glass-panel rounded-lg p-3">
-              <label className="font-mono text-label-caps text-on-surface-variant mb-2 block uppercase">State</label>
-              <div className={`w-full bg-surface-container-lowest/50 border border-outline-variant/50 rounded px-2 py-1 font-mono text-data-sm select-none transition-colors ${
-                state === 'Invalid PIN' 
-                  ? 'text-error font-bold' 
-                  : (state && state !== 'Awaiting PIN...' && state !== 'Resolving...' ? 'text-primary font-semibold' : 'text-on-surface-variant/40')
-              }`}>
-                {state}
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-        {/* Card 2: Neural Network Inference & Weather */}
-        <div className="glass-panel rounded-xl p-5 flex flex-col items-center">
-          <p className="font-mono text-label-caps text-on-surface-variant self-start mb-4 uppercase">Neural Network Inference</p>
-          
-          <div className="relative w-48 h-48 flex items-center justify-center animate-fade-in">
-            {/* Custom circular progress using dynamic styles based on predicted AQI */}
-            <div className={`w-full h-full rounded-full flex items-center justify-center border-8 transition-all duration-500 relative ${
-              predictedAQI === null 
-                ? 'border-surface-container glow-gray' 
-                : predictedAQI <= 50 
-                  ? 'border-primary/40 glow-emerald' 
-                  : predictedAQI <= 100 
-                    ? 'border-secondary/40 glow-orange' 
-                    : predictedAQI <= 200 
-                      ? 'border-tertiary-container/40 glow-orange' 
-                      : 'border-error/40 glow-error'
-            }`}
-                 style={{
-                   background: 'radial-gradient(closest-side, #0b1326 79%, transparent 80% 100%)',
-                   borderColor: predictedAQI === null ? '#171f33' : undefined
-                 }}>
-              
-              {/* Colored conic indicator */}
-              <div className={`absolute inset-0 rounded-full border-8 border-transparent opacity-80 rotate-45 transition-all duration-500 ${
-                predictedAQI === null 
-                  ? 'border-t-outline-variant border-r-outline-variant' 
-                  : predictedAQI <= 50 
-                    ? 'border-t-primary border-r-primary' 
-                    : predictedAQI <= 100 
-                      ? 'border-t-secondary border-r-secondary' 
-                      : predictedAQI <= 200 
-                        ? 'border-t-tertiary-container border-r-tertiary-container' 
-                        : 'border-t-error border-r-error'
-              }`}></div>
-
-              <div className="flex flex-col items-center z-10 text-center px-4">
-                {predictedAQI === null ? (
-                  <span className="font-mono text-[10px] font-bold text-on-surface-variant uppercase tracking-wider animate-pulse">Awaiting Telemetry...</span>
-                ) : (
-                  <>
-                    <span className={`font-headline text-[44px] font-bold leading-none transition-colors duration-500 ${
-                      predictedAQI <= 50 
+              {/* Sparkline decoration */}
+              <div className="absolute inset-0 opacity-20 pointer-events-none">
+                <svg className="w-full h-full" viewBox="0 0 100 100">
+                  <path className={
+                    predictedAQI === null 
+                      ? 'text-outline-variant' 
+                      : predictedAQI <= 50 
                         ? 'text-primary' 
                         : predictedAQI <= 100 
                           ? 'text-secondary' 
                           : predictedAQI <= 200 
                             ? 'text-tertiary-container' 
                             : 'text-error'
-                    }`}>{predictedAQI}</span>
-                    <span className={`font-mono text-[9px] font-bold uppercase tracking-[0.2em] mt-1 transition-colors duration-500 ${
-                      predictedAQI <= 50 
-                        ? 'text-primary' 
-                        : predictedAQI <= 100 
-                          ? 'text-secondary' 
-                          : predictedAQI <= 200 
-                            ? 'text-tertiary-container' 
-                            : 'text-error'
-                    }`}>
-                      {predictedAQI <= 50 
-                        ? 'Good AQI' 
-                        : predictedAQI <= 100 
-                          ? 'Moderate' 
-                          : predictedAQI <= 200 
-                            ? 'Poor AQI' 
-                            : 'Hazardous'}
-                    </span>
-                  </>
-                )}
+                  } d="M 10 50 Q 25 40, 40 60 T 70 30 T 90 50" fill="none" stroke="currentColor" strokeWidth="1.5"></path>
+                </svg>
               </div>
             </div>
 
-            {/* Micro-Sparkline Decorative Overlay */}
-            <div className="absolute inset-0 opacity-20 pointer-events-none">
-              <svg className="w-full h-full" viewBox="0 0 100 100">
-                <path className={
-                  predictedAQI === null 
-                    ? 'text-outline-variant' 
-                    : predictedAQI <= 50 
-                      ? 'text-primary' 
-                      : predictedAQI <= 100 
-                        ? 'text-secondary' 
-                        : predictedAQI <= 200 
-                          ? 'text-tertiary-container' 
-                          : 'text-error'
-                } d="M 10 50 Q 25 40, 40 60 T 70 30 T 90 50" fill="none" stroke="currentColor" strokeWidth="1.5"></path>
-              </svg>
-            </div>
-          </div>
-
-          {/* Weather Grid */}
-          <div className="grid grid-cols-2 w-full gap-4 mt-6">
-            <div className="flex items-center gap-3 bg-surface-container-low p-3 rounded-lg border border-outline-variant/10">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <span className="material-symbols-outlined text-primary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>device_thermostat</span>
+            {/* Weather parameters */}
+            <div className="grid grid-cols-2 w-full gap-4 mt-6">
+              <div className="flex items-center gap-3 bg-surface-container-low p-3 rounded-lg border border-outline-variant/10">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-primary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>device_thermostat</span>
+                </div>
+                <div>
+                  <p className="font-mono text-[9px] text-on-surface-variant uppercase">Temp</p>
+                  <p className="font-mono text-base font-semibold text-on-surface">{temperature}°C</p>
+                </div>
               </div>
-              <div>
-                <p className="font-mono text-[9px] text-on-surface-variant uppercase">Temp</p>
-                <p className="font-mono text-base font-semibold text-on-surface">{temperature}°C</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 bg-surface-container-low p-3 rounded-lg border border-outline-variant/10">
-              <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center">
-                <span className="material-symbols-outlined text-secondary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>humidity_percentage</span>
-              </div>
-              <div>
-                <p className="font-mono text-[9px] text-on-surface-variant uppercase">Humidity</p>
-                <p className="font-mono text-base font-semibold text-on-surface">{humidity}%</p>
+              <div className="flex items-center gap-3 bg-surface-container-low p-3 rounded-lg border border-outline-variant/10">
+                <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-secondary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>humidity_percentage</span>
+                </div>
+                <div>
+                  <p className="font-mono text-[9px] text-on-surface-variant uppercase">Humidity</p>
+                  <p className="font-mono text-base font-semibold text-on-surface">{humidity}%</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
+      </section>
 
-      </div>
-
-      {/* Computer Vision Section */}
-      <section className="space-y-4">
-        <h3 className="font-mono text-xs font-bold text-primary uppercase tracking-[0.3em]">Computer Vision Feed</h3>
+      {/* SECTION 2: Computer Vision Feed */}
+      <section id="cv-section" className="space-y-4 pt-10 border-t border-outline-variant/10 min-h-[50vh] flex flex-col justify-center">
+        <div className="flex items-center justify-between">
+          <h3 className="font-mono text-xs font-bold text-primary uppercase tracking-[0.3em]">Computer Vision Feed</h3>
+          <span className="font-mono text-[9px] bg-primary/10 text-primary px-2.5 py-0.5 rounded border border-primary/20 uppercase">Optical Haze Profiling</span>
+        </div>
         
         {capturedImage === null ? (
-          /* Placeholder State: Before Photo is Clicked */
-          <div className="glass-panel rounded-xl p-8 flex flex-col justify-center items-center h-48 border border-outline-variant/20 relative select-none overflow-hidden bg-surface-container-low/20">
-            {/* Grid lines background */}
+          <div className="glass-panel rounded-xl p-8 flex flex-col justify-center items-center h-56 border border-outline-variant/20 relative select-none overflow-hidden bg-surface-container-low/20">
             <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]"></div>
-            {/* Pulsing warning radar line */}
             <div className="absolute w-full h-[1px] bg-primary/10 top-1/2 left-0 animate-scanline"></div>
             
             <div className="z-10 text-center space-y-2">
               <span className="material-symbols-outlined text-on-surface-variant text-3xl opacity-60 animate-pulse">sensors_off</span>
               <p className="font-mono text-xs text-on-surface-variant tracking-wider uppercase font-bold">Awaiting live camera capture telemetry...</p>
-              <p className="text-[10px] text-on-surface-variant/60 max-w-sm">Please launch the optical telemetry system above and capture an atmospheric sample photo to engage particulate analysis pipelines.</p>
+              <p className="text-[10px] text-on-surface-variant/60 max-w-sm">Please launch the optical telemetry system above and capture or upload an atmospheric sample photo to engage particulate analysis pipelines.</p>
             </div>
           </div>
         ) : (
-          /* Split View State: After Photo is Clicked */
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            
             {/* Left Frame: Raw captured image */}
-            <div className="relative rounded-xl overflow-hidden glass-panel h-48 border border-primary/20 flex flex-col justify-center items-center bg-surface-container-lowest/30">
+            <div className="relative rounded-xl overflow-hidden glass-panel h-56 border border-primary/20 flex flex-col justify-center items-center bg-surface-container-lowest/30">
               <img src={capturedImage} alt="Raw Captured Frame" className="w-full h-full object-cover opacity-90" />
               <div className="absolute top-2 left-2 flex items-center gap-2 bg-background/80 px-2 py-1 rounded border border-outline-variant/30 z-20">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
@@ -1261,26 +1276,19 @@ Respond to the user's question concisely in 2-3 sentences.`;
             </div>
 
             {/* Right Frame: Processing Canvas area */}
-            <div className="relative rounded-xl overflow-hidden glass-panel h-48 border border-secondary/20 bg-surface-container-lowest/30 flex flex-col justify-center items-center">
-              
+            <div className="relative rounded-xl overflow-hidden glass-panel h-56 border border-secondary/20 bg-surface-container-lowest/30 flex flex-col justify-center items-center">
               {isProcessing ? (
-                /* Processing State with progress bar */
                 <div className="z-10 text-center space-y-3 p-4 w-full max-w-xs select-none">
                   <span className="material-symbols-outlined text-secondary text-2xl animate-spin">sync</span>
                   <p className="font-mono text-[10px] text-secondary tracking-widest block uppercase font-bold">Neural Engine Analysis...</p>
-                  
-                  {/* Progress Bar */}
                   <div className="w-full bg-surface-container-high h-2.5 rounded-full overflow-hidden border border-outline-variant/20 relative">
                     <div className="bg-gradient-to-r from-secondary to-primary h-full transition-all duration-150" style={{ width: `${processingProgress}%` }}></div>
                   </div>
                   <span className="font-mono text-[10px] text-secondary font-bold">{processingProgress}% Complete</span>
                 </div>
               ) : (
-                /* Complete State: Real Canvas rendering */
                 <>
-                  {/* The actual Canvas */}
                   <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-cover"></canvas>
-                  
                   <div className="absolute top-2 left-2 flex items-center gap-2 bg-secondary/90 px-2 py-1 rounded border border-on-secondary/30 z-20">
                     <span className="font-mono text-[8px] uppercase text-on-secondary font-bold">Neural_Map_Active</span>
                   </div>
@@ -1289,146 +1297,146 @@ Respond to the user's question concisely in 2-3 sentences.`;
                   </div>
                 </>
               )}
-
             </div>
-
           </div>
         )}
       </section>
 
-      {/* AI Environmental Consultant Section */}
-      {predictedAQI !== null && (
-        <section className="space-y-4">
+      {/* SECTION 3: AI Environmental Consultant */}
+      <section id="ai-section" className="space-y-4 pt-10 border-t border-outline-variant/10 min-h-[60vh] flex flex-col justify-center">
+        <div className="flex items-center justify-between">
           <h3 className="font-mono text-xs font-bold text-primary uppercase tracking-[0.3em]">AeroSight AI Diagnosis & Chat</h3>
+          <span className="font-mono text-[9px] bg-primary/10 text-primary px-2.5 py-0.5 rounded border border-primary/20 uppercase">AI Consultation</span>
+        </div>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
           
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
-            
-            {/* Column 1 & 2: Diagnostic Report Panel */}
-            <div className="lg:col-span-2 glass-panel rounded-xl p-5 space-y-4 flex flex-col justify-between">
-              <div>
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <p className="font-mono text-label-caps text-on-surface-variant mb-1 uppercase tracking-tighter">AI DIAGNOSTIC REPORT</p>
-                    <h4 className="font-headline text-lg font-bold text-primary">Atmospheric Diagnosis</h4>
-                  </div>
-                  {nearestStation && (
-                    <span className="font-mono text-[8px] bg-secondary/10 text-secondary px-2.5 py-0.5 rounded border border-secondary/20 uppercase max-w-[200px] truncate" title={nearestStation}>
-                      Nearest Station: {nearestStation.split(',')[0]}
-                    </span>
-                  )}
+          {/* Column 1 & 2: Diagnostic Report Panel */}
+          <div className="lg:col-span-2 glass-panel rounded-xl p-5 space-y-4 flex flex-col justify-between">
+            <div>
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <p className="font-mono text-label-caps text-on-surface-variant mb-1 uppercase tracking-tighter">AI DIAGNOSTIC REPORT</p>
+                  <h4 className="font-headline text-lg font-bold text-primary">Atmospheric Diagnosis</h4>
                 </div>
-
-                {isGeneratingReport ? (
-                  <div className="flex flex-col items-center justify-center py-10 space-y-3">
-                    <span className="material-symbols-outlined text-primary text-3xl animate-spin">sync</span>
-                    <p className="font-mono text-xs text-primary/70 uppercase">Generating health advice...</p>
-                  </div>
-                ) : (
-                  <div className="prose prose-invert max-w-none text-xs leading-relaxed text-on-surface/90 font-sans space-y-2 whitespace-pre-line">
-                    {aiReport}
-                  </div>
+                {predictedAQI !== null && nearestStation && (
+                  <span className="font-mono text-[8px] bg-secondary/10 text-secondary px-2.5 py-0.5 rounded border border-secondary/20 uppercase max-w-[200px] truncate" title={nearestStation}>
+                    Nearest Station: {nearestStation.split(',')[0]}
+                  </span>
                 )}
               </div>
 
-              {/* API Key management at the bottom of diagnostic panel */}
-              <div className="pt-4 border-t border-outline-variant/20 flex flex-col sm:flex-row justify-between items-center gap-3">
-                <span className="font-mono text-[9px] text-on-surface-variant/60">
-                  {groqKey ? "⚡ Groq API Connected (Llama 3)" : "⚠️ Operating in Offline Mode (Pre-baked fallback)"}
-                </span>
-                
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <input
-                    type="password"
-                    placeholder="Paste Groq API Key..."
-                    value={groqKey}
-                    onChange={(e) => {
-                      const key = e.target.value;
-                      setGroqKey(key);
-                      localStorage.setItem('groq_api_key', key);
-                    }}
-                    className="bg-surface-container-low border border-outline-variant/40 rounded px-2.5 py-1.5 text-[10px] font-mono text-primary placeholder:text-on-surface-variant/35 focus:border-primary outline-none transition-colors w-full sm:w-44"
-                  />
-                  {groqKey && (
-                    <button
-                      onClick={generateAiDiagnosis}
-                      title="Regenerate diagnosis"
-                      className="p-1.5 bg-primary/10 border border-primary/30 text-primary rounded hover:bg-primary/20 transition-all flex items-center justify-center"
-                    >
-                      <span className="material-symbols-outlined text-sm">refresh</span>
-                    </button>
-                  )}
+              {isGeneratingReport ? (
+                <div className="flex flex-col items-center justify-center py-10 space-y-3">
+                  <span className="material-symbols-outlined text-primary text-3xl animate-spin">sync</span>
+                  <p className="font-mono text-xs text-primary/70 uppercase">Generating health advice...</p>
                 </div>
-              </div>
+              ) : (
+                <div className="prose prose-invert max-w-none text-xs leading-relaxed text-on-surface/90 font-sans space-y-2 whitespace-pre-line">
+                  {aiReport}
+                </div>
+              )}
             </div>
 
-            {/* Column 3: Interactive Chatbot Drawer */}
-            <div className="glass-panel rounded-xl p-5 flex flex-col h-[340px] justify-between">
-              <div>
-                <p className="font-mono text-label-caps text-on-surface-variant mb-1 uppercase tracking-tighter">ENVIRONMENTAL CHAT</p>
-                <h4 className="font-headline text-sm font-bold text-on-surface mb-3 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
-                  Consult AeroSight AI
-                </h4>
-              </div>
-
-              {/* Chat Message Logs */}
-              <div className="flex-grow overflow-y-auto pr-1 space-y-3 max-h-[190px] terminal-scroll text-[11px] font-sans flex flex-col">
-                {chatMessages.length === 0 ? (
-                  <div className="h-full flex flex-col justify-center items-center text-center opacity-40 py-6 my-auto">
-                    <span className="material-symbols-outlined text-2xl mb-1">chat_bubble</span>
-                    <p className="font-mono text-[9px] uppercase">Awaiting query...</p>
-                  </div>
-                ) : (
-                  chatMessages.map((msg, index) => (
-                    <div
-                      key={index}
-                      className={`p-2.5 rounded-lg border leading-normal max-w-[85%] ${
-                        msg.role === 'user'
-                          ? 'bg-primary/15 border-primary/20 text-on-surface self-end ml-auto'
-                          : 'bg-surface-container border-outline-variant/30 text-on-surface-variant self-start mr-auto'
-                      }`}
-                    >
-                      <p className="font-mono text-[7px] text-primary/75 uppercase mb-1 font-bold">
-                        {msg.role === 'user' ? 'You' : 'AeroSight AI'}
-                      </p>
-                      <p className="whitespace-pre-line">{msg.content}</p>
-                    </div>
-                  ))
-                )}
-                {isGeneratingChat && (
-                  <div className="flex items-center gap-2 p-2 bg-surface-container border border-outline-variant/30 rounded-lg max-w-[60%] animate-pulse mr-auto">
-                    <span className="material-symbols-outlined text-[10px] animate-spin text-primary">sync</span>
-                    <span className="font-mono text-[8px] text-primary uppercase">Thinking...</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Chat Input form */}
-              <form onSubmit={handleSendMessage} className="mt-4 flex gap-2 border-t border-outline-variant/20 pt-3">
+            {/* API Key management at the bottom of diagnostic panel */}
+            <div className="pt-4 border-t border-outline-variant/20 flex flex-col sm:flex-row justify-between items-center gap-3">
+              <span className="font-mono text-[9px] text-on-surface-variant/60">
+                {groqKey ? "⚡ Groq API Connected (Llama 3)" : "⚠️ Operating in Offline Mode (Pre-baked fallback)"}
+              </span>
+              
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <input
-                  type="text"
-                  placeholder="Ask a question..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  disabled={isGeneratingChat}
-                  className="flex-grow bg-surface-container-low border border-outline-variant/40 rounded px-2.5 py-1.5 text-xs text-on-surface placeholder:text-on-surface-variant/40 focus:border-primary outline-none transition-colors"
+                  type="password"
+                  placeholder="Paste Groq API Key..."
+                  value={groqKey}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    setGroqKey(key);
+                    localStorage.setItem('groq_api_key', key);
+                  }}
+                  className="bg-surface-container-low border border-outline-variant/40 rounded px-2.5 py-1.5 text-[10px] font-mono text-primary placeholder:text-on-surface-variant/35 focus:border-primary outline-none transition-colors w-full sm:w-44"
                 />
-                <button
-                  type="submit"
-                  disabled={isGeneratingChat || !chatInput.trim()}
-                  className="px-3 bg-primary text-on-primary font-bold rounded flex items-center justify-center active:scale-95 transition-transform hover:bg-primary-container disabled:opacity-40 disabled:pointer-events-none"
-                >
-                  <span className="material-symbols-outlined text-sm">send</span>
-                </button>
-              </form>
+                {groqKey && predictedAQI !== null && (
+                  <button
+                    onClick={generateAiDiagnosis}
+                    title="Regenerate diagnosis"
+                    className="p-1.5 bg-primary/10 border border-primary/30 text-primary rounded hover:bg-primary/20 transition-all flex items-center justify-center"
+                  >
+                    <span className="material-symbols-outlined text-sm">refresh</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Column 3: Interactive Chatbot Drawer */}
+          <div className="glass-panel rounded-xl p-5 flex flex-col h-[340px] justify-between">
+            <div>
+              <p className="font-mono text-label-caps text-on-surface-variant mb-1 uppercase tracking-tighter">ENVIRONMENTAL CHAT</p>
+              <h4 className="font-headline text-sm font-bold text-on-surface mb-3 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                Consult AeroSight AI
+              </h4>
             </div>
 
-          </div>
-        </section>
-      )}
+            {/* Chat Message Logs */}
+            <div className="flex-grow overflow-y-auto pr-1 space-y-3 max-h-[190px] terminal-scroll text-[11px] font-sans flex flex-col">
+              {chatMessages.length === 0 ? (
+                <div className="h-full flex flex-col justify-center items-center text-center opacity-40 py-6 my-auto">
+                  <span className="material-symbols-outlined text-2xl mb-1">chat_bubble</span>
+                  <p className="font-mono text-[9px] uppercase">Awaiting query...</p>
+                  <p className="text-[9px] text-on-surface-variant/60 max-w-[200px]">Ask a question about current air quality or health guidelines.</p>
+                </div>
+              ) : (
+                chatMessages.map((msg, index) => (
+                  <div
+                    key={index}
+                    className={`p-2.5 rounded-lg border leading-normal max-w-[85%] ${
+                      msg.role === 'user'
+                        ? 'bg-primary/15 border-primary/20 text-on-surface self-end ml-auto'
+                        : 'bg-surface-container border-outline-variant/30 text-on-surface-variant self-start mr-auto'
+                    }`}
+                  >
+                    <p className="font-mono text-[7px] text-primary/75 uppercase mb-1 font-bold">
+                      {msg.role === 'user' ? 'You' : 'AeroSight AI'}
+                    </p>
+                    <p className="whitespace-pre-line">{msg.content}</p>
+                  </div>
+                ))
+              )}
+              {isGeneratingChat && (
+                <div className="flex items-center gap-2 p-2 bg-surface-container border border-outline-variant/30 rounded-lg max-w-[60%] animate-pulse mr-auto">
+                  <span className="material-symbols-outlined text-[10px] animate-spin text-primary">sync</span>
+                  <span className="font-mono text-[8px] text-primary uppercase">Thinking...</span>
+                </div>
+              )}
+            </div>
 
-      {/* Map Section */}
-      <section className="space-y-4">
+            {/* Chat Input form */}
+            <form onSubmit={handleSendMessage} className="mt-4 flex gap-2 border-t border-outline-variant/20 pt-3">
+              <input
+                type="text"
+                placeholder={predictedAQI === null ? "Ask any general AQI questions..." : "Ask about this location's air..."}
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                disabled={isGeneratingChat}
+                className="flex-grow bg-surface-container-low border border-outline-variant/40 rounded px-2.5 py-1.5 text-xs text-on-surface placeholder:text-on-surface-variant/40 focus:border-primary outline-none transition-colors"
+              />
+              <button
+                type="submit"
+                disabled={isGeneratingChat || !chatInput.trim()}
+                className="px-3 bg-primary text-on-primary font-bold rounded flex items-center justify-center active:scale-95 transition-transform hover:bg-primary-container disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <span className="material-symbols-outlined text-sm">send</span>
+              </button>
+            </form>
+          </div>
+
+        </div>
+      </section>
+
+      {/* SECTION 4: Map Section */}
+      <section id="map-section" className="space-y-4 pt-10 border-t border-outline-variant/10 min-h-[60vh] flex flex-col justify-center">
         <div className="flex justify-between items-center">
           <h3 className="font-mono text-xs font-bold text-primary uppercase tracking-[0.3em]">Network Topology</h3>
           <span className="text-primary font-mono text-[10px] bg-primary/10 px-2.5 py-0.5 rounded border border-primary/20">12 Active Nodes</span>
