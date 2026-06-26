@@ -47,6 +47,36 @@ function DashboardView() {
   const canvasRef = useRef(null);
   const latestPinRef = useRef('');
 
+  // WAQI nearest station telemetry states
+  const [nearestStation, setNearestStation] = useState('');
+  const [nearestStationAQI, setNearestStationAQI] = useState(null);
+  const [dominantPollutant, setDominantPollutant] = useState('');
+
+  const [groqKey, setGroqKey] = useState(() => {
+    return localStorage.getItem('groq_api_key') || 
+           import.meta.env.VITE_GROQ_API_KEY || 
+           import.meta.env.VITE_GEO_API_KEY || 
+           import.meta.env.VITE_GROK_API_KEY || 
+           '';
+  });
+
+  useEffect(() => {
+    const fromStorage = localStorage.getItem('groq_api_key');
+    const fromEnv = import.meta.env.VITE_GROQ_API_KEY;
+    if (fromStorage) {
+      console.log(`[Groq Key Info] Loaded from localStorage. Length: ${fromStorage.length}. Starts with: ${fromStorage.slice(0, 4)}...`);
+    } else if (fromEnv) {
+      console.log(`[Groq Key Info] Loaded from .env (VITE_GROQ_API_KEY). Length: ${fromEnv.length}. Starts with: ${fromEnv.slice(0, 4)}...`);
+    } else {
+      console.log(`[Groq Key Info] No key found in localStorage or .env`);
+    }
+  }, [groqKey]);
+  const [aiReport, setAiReport] = useState('');
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState([]);
+  const [isGeneratingChat, setIsGeneratingChat] = useState(false);
+
   // Keep region in sync for canvas HUD telemetry and fallback references locally
   const region = (() => {
     if (!district || !state) return 'Awaiting Location...';
@@ -58,19 +88,26 @@ function DashboardView() {
 
   // Initialize dynamic TensorFlow.js loader on mount
   useEffect(() => {
+    let active = true;
     const initTF = async () => {
       try {
         const tf = await loadTensorFlow();
+        if (!active) return;
         tfInstanceRef.current = tf;
-        const model = createPredictorModel(tf);
-        initializeModelWeights(tf, model);
-        mlModelRef.current = model;
-        console.log("TensorFlow.js dynamic ML Engine loaded and model initialized with pre-baked urban weights.");
+        if (!mlModelRef.current) {
+          const model = createPredictorModel(tf);
+          initializeModelWeights(tf, model);
+          mlModelRef.current = model;
+          console.log("TensorFlow.js dynamic ML Engine loaded and model initialized with pre-baked urban weights.");
+        }
       } catch (err) {
         console.error("Failed to load/initialize TensorFlow.js prediction model:", err);
       }
     };
     initTF();
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Dynamic canvas mock photo generator (Skyline HUD builder)
@@ -529,6 +566,243 @@ function DashboardView() {
     }, 0);
     return () => clearTimeout(timer);
   }, [fetchLiveWeather]);
+
+  // Fetch nearest WAQI physical sensor station when coordinates change
+  useEffect(() => {
+    if (!coordinates) {
+      setNearestStation('');
+      setNearestStationAQI(null);
+      setDominantPollutant('');
+      return;
+    }
+
+    const fetchNearestStation = async () => {
+      const waqiToken = import.meta.env.VITE_WAQI_TOKEN || 'demo';
+      try {
+        const { lat, lng } = coordinates;
+        const res = await fetch(`https://api.waqi.info/feed/geo:${lat};${lng}/?token=${waqiToken}`);
+        if (!res.ok) throw new Error("WAQI feed endpoint error");
+        const payload = await res.json();
+        
+        if (payload && payload.status === 'ok' && payload.data) {
+          setNearestStation(payload.data.city.name);
+          setNearestStationAQI(payload.data.aqi);
+          setDominantPollutant(payload.data.dominentpol || 'pm25');
+          console.log(`Nearest physical station identified: ${payload.data.city.name} (Real AQI: ${payload.data.aqi})`);
+        } else {
+          setNearestStation('');
+          setNearestStationAQI(null);
+          setDominantPollutant('');
+        }
+      } catch (err) {
+        console.warn("Failed to fetch nearest WAQI physical sensor station:", err);
+        setNearestStation('');
+        setNearestStationAQI(null);
+        setDominantPollutant('');
+      }
+    };
+
+    fetchNearestStation();
+  }, [coordinates]);
+
+  const generateAiDiagnosis = async () => {
+    setIsGeneratingReport(true);
+    setAiReport('Analyzing atmospheric parameters and telemetry...');
+
+    const getFallbackReport = () => {
+      let level = '';
+      let meaning = '';
+      let precautions = [];
+
+      if (predictedAQI <= 50) {
+        level = 'Good';
+        meaning = 'Air quality is satisfactory, and air pollution poses little or no risk.';
+        precautions = [
+          'Excellent time for outdoor exercises and sports.',
+          'Ventilate indoor spaces by opening windows.',
+          'No special precautions needed for sensitive groups.'
+        ];
+      } else if (predictedAQI <= 100) {
+        level = 'Moderate';
+        meaning = 'Air quality is acceptable; however, there may be a moderate health concern for a very small number of individuals who are unusually sensitive to air pollution.';
+        precautions = [
+          'Unusually sensitive people should consider reducing prolonged or heavy outdoor exertion.',
+          'Keep indoor spaces ventilated, but monitor outdoor haze.',
+          'Great time to wear a lightweight PM2.5 mask if outdoor activity is long.'
+        ];
+      } else if (predictedAQI <= 200) {
+        level = 'Poor';
+        meaning = 'Members of sensitive groups may experience health effects. The general public is less likely to be affected.';
+        precautions = [
+          'Wear an N95 or PM2.5 filtering respirator mask when outdoors.',
+          'Children, active adults, and people with respiratory diseases should limit prolonged outdoor exertion.',
+          'Run indoor air purifiers and close external windows.'
+        ];
+      } else {
+        level = 'Hazardous';
+        meaning = 'Health alert: everyone may experience more serious health effects. Everyone should avoid outdoor activities.';
+        precautions = [
+          'Remain indoors with windows closed tightly and air purifiers running.',
+          'Wear a well-fitted N95 mask or respirator if going outdoors is absolutely mandatory.',
+          'Avoid all heavy physical exertion and physical training outdoors.',
+          'Sensitive groups should consult a medical professional if experiencing shortness of breath.'
+        ];
+      }
+
+      let comparisonStr = '';
+      if (nearestStation && nearestStationAQI !== null) {
+        comparisonStr = `\n\n[Comparison Telemetry]\nNearest WAQI Station: ${nearestStation}\nReal-Time Station AQI: ${nearestStationAQI} (${nearestStationAQI <= 50 ? 'Good' : nearestStationAQI <= 100 ? 'Moderate' : nearestStationAQI <= 200 ? 'Poor' : 'Hazardous'})\nYour Local Predicted AQI: ${predictedAQI} (${level})\n`;
+      }
+
+      return `**AQI Category: ${level} (${predictedAQI})**\n\n${meaning}\n\n**Recommended Health Precautions:**\n${precautions.map(p => `- ${p}`).join('\n')}${comparisonStr}`;
+    };
+
+    if (!groqKey) {
+      setTimeout(() => {
+        setAiReport(getFallbackReport());
+        setIsGeneratingReport(false);
+      }, 1000);
+      return;
+    }
+
+    try {
+      const nearestInfo = nearestStation && nearestStationAQI !== null 
+        ? `Nearest physical sensor station: ${nearestStation} reporting a real AQI of ${nearestStationAQI} (Dominant pollutant: ${dominantPollutant}).`
+        : "No physical sensor station details are available for this PIN/coordinates.";
+
+      const prompt = `You are AeroSight AI, a senior environmental scientist and clinical health consultant.
+Analyze these telemetry details:
+- Location: ${district || 'Unknown'}, ${state || 'Unknown'}, India
+- Current Weather: Temp ${temperature}°C, Humidity ${humidity}%
+- Computer Vision Predicted AQI (Haze density): ${predictedAQI}
+- ${nearestInfo}
+
+Provide a highly concise, descriptive 3-4 sentence diagnostic analysis of the atmospheric conditions, and outline 3-4 bullet-point medical precautions.
+Clearly compare the computer-vision predicted AQI with the physical station's real AQI (if available) and explain what this indicates. Make it sound professional, technical, and helpful.`;
+
+      const response = await fetch('/api/groq/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${groqKey}`
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: 'You are AeroSight AI, a senior environmental scientist and clinical health consultant.' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 400
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Groq API returned status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data && data.choices && data.choices[0]) {
+        const text = data.choices[0].message.content;
+        setAiReport(text);
+        setChatMessages([
+          { role: 'assistant', content: text }
+        ]);
+      } else {
+        throw new Error("Invalid response format from Groq API");
+      }
+    } catch (err) {
+      console.warn("Groq API request failed, falling back to local pre-baked diagnosis:", err);
+      setAiReport(`*Note: AI completions failed (${err.message}). Showing local diagnosis fallback:*\n\n` + getFallbackReport());
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isGeneratingChat) return;
+
+    const userMsg = { role: 'user', content: chatInput };
+    setChatMessages((prev) => [...prev, userMsg]);
+    setChatInput('');
+    setIsGeneratingChat(true);
+
+    if (!groqKey) {
+      setTimeout(() => {
+        setChatMessages((prev) => [
+          ...prev,
+          { 
+            role: 'assistant', 
+            content: "I am running in offline mode. Please configure a Groq API Key in the settings below to chat with me and ask custom atmospheric questions!" 
+          }
+        ]);
+        setIsGeneratingChat(false);
+      }, 1000);
+      return;
+    }
+
+    try {
+      const chatHistory = chatMessages.map(m => ({ role: m.role, content: m.content }));
+      chatHistory.push(userMsg);
+
+      const systemPrompt = `You are AeroSight AI, an atmospheric scientist and health consultant. You are chatting with the user in the context of the following telemetry:
+- Location: ${district}, ${state}, India
+- Weather: Temp ${temperature}°C, Humidity ${humidity}%
+- Computer Vision Predicted AQI: ${predictedAQI}
+- Nearest Physical Station: ${nearestStation || 'None'} (AQI: ${nearestStationAQI || 'N/A'})
+
+Respond to the user's question concisely in 2-3 sentences.`;
+
+      const response = await fetch('/api/groq/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${groqKey}`
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...chatHistory
+          ],
+          temperature: 0.7,
+          max_tokens: 250
+        })
+      });
+
+      if (!response.ok) throw new Error(`Groq status: ${response.status}`);
+      const data = await response.json();
+      
+      if (data && data.choices && data.choices[0]) {
+        setChatMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: data.choices[0].message.content }
+        ]);
+      } else {
+        throw new Error("Invalid payload structure");
+      }
+    } catch (err) {
+      console.warn("Groq chat failed:", err);
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: `Error: Unable to connect to Groq. ${err.message}` }
+      ]);
+    } finally {
+      setIsGeneratingChat(false);
+    }
+  };
+
+  // Generate AI Diagnosis report when predictedAQI or nearestStationAQI resolves
+  useEffect(() => {
+    if (predictedAQI === null) {
+      setAiReport('');
+      setChatMessages([]);
+      return;
+    }
+    
+    generateAiDiagnosis();
+  }, [predictedAQI, nearestStationAQI]);
 
   // Pin Code auto-resolve via local 3-digit prefix lookup engine
   const handlePinChange = async (e) => {
@@ -1021,6 +1295,137 @@ function DashboardView() {
           </div>
         )}
       </section>
+
+      {/* AI Environmental Consultant Section */}
+      {predictedAQI !== null && (
+        <section className="space-y-4">
+          <h3 className="font-mono text-xs font-bold text-primary uppercase tracking-[0.3em]">AeroSight AI Diagnosis & Chat</h3>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+            
+            {/* Column 1 & 2: Diagnostic Report Panel */}
+            <div className="lg:col-span-2 glass-panel rounded-xl p-5 space-y-4 flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <p className="font-mono text-label-caps text-on-surface-variant mb-1 uppercase tracking-tighter">AI DIAGNOSTIC REPORT</p>
+                    <h4 className="font-headline text-lg font-bold text-primary">Atmospheric Diagnosis</h4>
+                  </div>
+                  {nearestStation && (
+                    <span className="font-mono text-[8px] bg-secondary/10 text-secondary px-2.5 py-0.5 rounded border border-secondary/20 uppercase max-w-[200px] truncate" title={nearestStation}>
+                      Nearest Station: {nearestStation.split(',')[0]}
+                    </span>
+                  )}
+                </div>
+
+                {isGeneratingReport ? (
+                  <div className="flex flex-col items-center justify-center py-10 space-y-3">
+                    <span className="material-symbols-outlined text-primary text-3xl animate-spin">sync</span>
+                    <p className="font-mono text-xs text-primary/70 uppercase">Generating health advice...</p>
+                  </div>
+                ) : (
+                  <div className="prose prose-invert max-w-none text-xs leading-relaxed text-on-surface/90 font-sans space-y-2 whitespace-pre-line">
+                    {aiReport}
+                  </div>
+                )}
+              </div>
+
+              {/* API Key management at the bottom of diagnostic panel */}
+              <div className="pt-4 border-t border-outline-variant/20 flex flex-col sm:flex-row justify-between items-center gap-3">
+                <span className="font-mono text-[9px] text-on-surface-variant/60">
+                  {groqKey ? "⚡ Groq API Connected (Llama 3)" : "⚠️ Operating in Offline Mode (Pre-baked fallback)"}
+                </span>
+                
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <input
+                    type="password"
+                    placeholder="Paste Groq API Key..."
+                    value={groqKey}
+                    onChange={(e) => {
+                      const key = e.target.value;
+                      setGroqKey(key);
+                      localStorage.setItem('groq_api_key', key);
+                    }}
+                    className="bg-surface-container-low border border-outline-variant/40 rounded px-2.5 py-1.5 text-[10px] font-mono text-primary placeholder:text-on-surface-variant/35 focus:border-primary outline-none transition-colors w-full sm:w-44"
+                  />
+                  {groqKey && (
+                    <button
+                      onClick={generateAiDiagnosis}
+                      title="Regenerate diagnosis"
+                      className="p-1.5 bg-primary/10 border border-primary/30 text-primary rounded hover:bg-primary/20 transition-all flex items-center justify-center"
+                    >
+                      <span className="material-symbols-outlined text-sm">refresh</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Column 3: Interactive Chatbot Drawer */}
+            <div className="glass-panel rounded-xl p-5 flex flex-col h-[340px] justify-between">
+              <div>
+                <p className="font-mono text-label-caps text-on-surface-variant mb-1 uppercase tracking-tighter">ENVIRONMENTAL CHAT</p>
+                <h4 className="font-headline text-sm font-bold text-on-surface mb-3 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                  Consult AeroSight AI
+                </h4>
+              </div>
+
+              {/* Chat Message Logs */}
+              <div className="flex-grow overflow-y-auto pr-1 space-y-3 max-h-[190px] terminal-scroll text-[11px] font-sans flex flex-col">
+                {chatMessages.length === 0 ? (
+                  <div className="h-full flex flex-col justify-center items-center text-center opacity-40 py-6 my-auto">
+                    <span className="material-symbols-outlined text-2xl mb-1">chat_bubble</span>
+                    <p className="font-mono text-[9px] uppercase">Awaiting query...</p>
+                  </div>
+                ) : (
+                  chatMessages.map((msg, index) => (
+                    <div
+                      key={index}
+                      className={`p-2.5 rounded-lg border leading-normal max-w-[85%] ${
+                        msg.role === 'user'
+                          ? 'bg-primary/15 border-primary/20 text-on-surface self-end ml-auto'
+                          : 'bg-surface-container border-outline-variant/30 text-on-surface-variant self-start mr-auto'
+                      }`}
+                    >
+                      <p className="font-mono text-[7px] text-primary/75 uppercase mb-1 font-bold">
+                        {msg.role === 'user' ? 'You' : 'AeroSight AI'}
+                      </p>
+                      <p className="whitespace-pre-line">{msg.content}</p>
+                    </div>
+                  ))
+                )}
+                {isGeneratingChat && (
+                  <div className="flex items-center gap-2 p-2 bg-surface-container border border-outline-variant/30 rounded-lg max-w-[60%] animate-pulse mr-auto">
+                    <span className="material-symbols-outlined text-[10px] animate-spin text-primary">sync</span>
+                    <span className="font-mono text-[8px] text-primary uppercase">Thinking...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Chat Input form */}
+              <form onSubmit={handleSendMessage} className="mt-4 flex gap-2 border-t border-outline-variant/20 pt-3">
+                <input
+                  type="text"
+                  placeholder="Ask a question..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  disabled={isGeneratingChat}
+                  className="flex-grow bg-surface-container-low border border-outline-variant/40 rounded px-2.5 py-1.5 text-xs text-on-surface placeholder:text-on-surface-variant/40 focus:border-primary outline-none transition-colors"
+                />
+                <button
+                  type="submit"
+                  disabled={isGeneratingChat || !chatInput.trim()}
+                  className="px-3 bg-primary text-on-primary font-bold rounded flex items-center justify-center active:scale-95 transition-transform hover:bg-primary-container disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <span className="material-symbols-outlined text-sm">send</span>
+                </button>
+              </form>
+            </div>
+
+          </div>
+        </section>
+      )}
 
       {/* Map Section */}
       <section className="space-y-4">
