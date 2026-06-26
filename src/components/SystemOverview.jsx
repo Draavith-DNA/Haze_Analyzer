@@ -1,24 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
+const logMessages = [
+  "[04:22:30] NODE-44: Resuming high-frequency sampling",
+  "[04:22:35] SECURITY: Integrity check passed - 100% valid",
+  "[04:22:42] API: GET request from node-cluster-04 handled",
+  "[04:22:48] NETWORK: Balancing ingress traffic across 12 zones",
+  "[04:22:55] SENSOR: Mumbai air quality spike detected (PM2.5)",
+  "[04:23:02] KERNEL: Garbage collection completed (44ms saved)",
+  "[04:23:10] NODES: Sync protocol active on node-74",
+  "[04:23:18] TELEMETRY: Optical laser lenses recalibrating",
+  "[04:23:24] CORE: AI prediction weight threshold nominal"
+];
 
 function SystemOverview() {
   const [logs, setLogs] = useState([
     "[04:22:15] AUTH: Handshake protocol established (RSA-4096)",
     "[04:22:18] STREAM: Primary data pipe optimized (Zstd level 3)",
-    "[04:22:20] KERNEL: AeroSight-AI Core loading neural weights...",
+    "[04:22:20] KERNEL: Haze Analyzer Core loading neural weights...",
     "[04:22:25] BOOT: System initialized in 1.442ms"
   ]);
-
-  const logMessages = [
-    "[04:22:30] NODE-44: Resuming high-frequency sampling",
-    "[04:22:35] SECURITY: Integrity check passed - 100% valid",
-    "[04:22:42] API: GET request from node-cluster-04 handled",
-    "[04:22:48] NETWORK: Balancing ingress traffic across 12 zones",
-    "[04:22:55] SENSOR: Mumbai air quality spike detected (PM2.5)",
-    "[04:23:02] KERNEL: Garbage collection completed (44ms saved)",
-    "[04:23:10] NODES: Sync protocol active on node-74",
-    "[04:23:18] TELEMETRY: Optical laser lenses recalibrating",
-    "[04:23:24] CORE: AI prediction weight threshold nominal"
-  ];
 
   const logIndexRef = useRef(0);
   const logContainerRef = useRef(null);

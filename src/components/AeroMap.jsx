@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
-// Dark map style matching the slate-900 AeroSight UI
+// Dark map style matching the slate-900 Haze Analyzer UI
 const darkMapStyle = [
   { elementType: "geometry", stylers: [{ color: "#0b1326" }] },
   { elementType: "labels.text.stroke", stylers: [{ color: "#0b1326" }] },
@@ -47,12 +47,37 @@ const darkMapStyle = [
   },
 ];
 
+// Pure Heatmap map style - hides administrative boundaries, labels, roads, and land features
+const pureHeatmapStyle = [
+  { elementType: "geometry", stylers: [{ color: "#0b1326" }] },
+  { elementType: "labels", stylers: [{ visibility: "off" }] },
+  { featureType: "road", stylers: [{ visibility: "off" }] },
+  { featureType: "administrative", stylers: [{ visibility: "off" }] },
+  { featureType: "poi", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+  { featureType: "landscape", stylers: [{ visibility: "off" }] },
+  { featureType: "water", stylers: [{ color: "#0b1326" }] } // Lock background to flat slate
+];
 
-function AeroMap({ pinCode, district, state, coordinates }) {
+function AeroMap({ pinCode, coordinates }) {
   const mapRef = useRef(null);
   const [mapInstance, setMapInstance] = useState(null);
-  const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
-  const [loadError, setLoadError] = useState(false);
+  const [mapViewMode, setMapViewMode] = useState('operational');
+  
+  // Ref to track current mapViewMode to avoid stale closures in map event listeners
+  const mapViewModeRef = useRef(mapViewMode);
+  useEffect(() => {
+    mapViewModeRef.current = mapViewMode;
+  }, [mapViewMode]);
+
+  // Lazy state initializer to avoid synchronous setState calls inside useEffect
+  const [isGoogleLoaded, setIsGoogleLoaded] = useState(() => {
+    return typeof window !== 'undefined' && window.google && window.google.maps ? true : false;
+  });
+  
+  const [loadError, setLoadError] = useState(() => {
+    return !import.meta.env.VITE_GOOGLE_MAPS_KEY;
+  });
   const activeMarkersRef = useRef([]);
 
   // Load Google Maps API Key and WAQI Token from environment
@@ -69,102 +94,9 @@ function AeroMap({ pinCode, district, state, coordinates }) {
     return '#ffb4ab';                 // Crimson Poor
   };
 
-  // Dynamic Google Maps Script loader
-  useEffect(() => {
-    if (window.google && window.google.maps) {
-      setIsGoogleLoaded(true);
-      return;
-    }
-
-    if (!googleMapsKey) {
-      console.warn("VITE_GOOGLE_MAPS_KEY is empty. Rendering dynamic radar hud fallback.");
-      setLoadError(true);
-      return;
-    }
-
-    const scriptId = 'google-maps-script';
-    let script = document.getElementById(scriptId);
-
-    if (!script) {
-      script = document.createElement('script');
-      script.id = scriptId;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${googleMapsKey}&libraries=geometry`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => setIsGoogleLoaded(true);
-      script.onerror = () => {
-        console.error("Failed to load Google Maps SDK script.");
-        setLoadError(true);
-      };
-      document.head.appendChild(script);
-    } else {
-      // Script is already added but maps aren't loaded in window yet. Listen to its load event.
-      const handleScriptLoad = () => {
-        if (window.google && window.google.maps) {
-          setIsGoogleLoaded(true);
-        }
-      };
-      script.addEventListener('load', handleScriptLoad);
-      
-      // Double check periodically in case of rapid race conditions
-      const interval = setInterval(() => {
-        if (window.google && window.google.maps) {
-          setIsGoogleLoaded(true);
-          clearInterval(interval);
-        }
-      }, 500);
-
-      return () => {
-        script.removeEventListener('load', handleScriptLoad);
-        clearInterval(interval);
-      };
-    }
-  }, [googleMapsKey]);
-
-  // Map Initialization
-  useEffect(() => {
-    if (!isGoogleLoaded || !mapRef.current || mapInstance) return;
-
-    try {
-      const initialCenter = new window.google.maps.LatLng(20.5937, 78.9629); // Center of India
-      const map = new window.google.maps.Map(mapRef.current, {
-        center: initialCenter,
-        zoom: 5,
-        styles: darkMapStyle,
-        disableDefaultUI: true,
-        zoomControl: true,
-        streetViewControl: false,
-        mapTypeControl: false,
-        backgroundColor: '#0b1326'
-      });
-
-      // WAQI Tile overlay integration
-      const waqiTileOverlay = new window.google.maps.ImageMapType({
-        getTileUrl: function (coord, zoom) {
-          return `https://tiles.waqi.info/tiles/usepa-aqi/${zoom}/${coord.x}/${coord.y}.png?token=${waqiToken}`;
-        },
-        tileSize: new window.google.maps.Size(256, 256),
-        name: "WAQI Live Heatmap",
-        opacity: 0.55
-      });
-      map.overlayMapTypes.insertAt(0, waqiTileOverlay);
-
-      setMapInstance(map);
-
-      // Event listener to fetch point markers when map is idle
-      map.addListener("idle", () => {
-        fetchNearbyStations(map);
-      });
-
-    } catch (e) {
-      console.error("Error initializing Google Maps:", e);
-      setLoadError(true);
-    }
-  }, [isGoogleLoaded]);
-
   // Fetch stations using the bounding box endpoint
-  const fetchNearbyStations = async (map) => {
-    if (!window.google || !map) return;
+  const fetchNearbyStations = useCallback(async (map) => {
+    if (!window.google || !map || mapViewModeRef.current !== 'operational') return;
 
     try {
       const bounds = map.getBounds();
@@ -220,7 +152,111 @@ function AeroMap({ pinCode, district, state, coordinates }) {
     } catch (e) {
       console.warn("Could not fetch WAQI bounding stations:", e);
     }
-  };
+  }, [waqiToken]);
+
+  // Dynamic Google Maps Script loader
+  useEffect(() => {
+    if (isGoogleLoaded) return;
+
+    if (!googleMapsKey) {
+      console.warn("VITE_GOOGLE_MAPS_KEY is empty. Rendering dynamic radar hud fallback.");
+      return;
+    }
+
+    const scriptId = 'google-maps-script';
+    let script = document.getElementById(scriptId);
+
+    if (!script) {
+      script = document.createElement('script');
+      script.id = scriptId;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${googleMapsKey}&libraries=geometry`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => setIsGoogleLoaded(true);
+      script.onerror = () => {
+        console.error("Failed to load Google Maps SDK script.");
+        setLoadError(true);
+      };
+      document.head.appendChild(script);
+    } else {
+      // Script is already added but maps aren't loaded in window yet. Listen to its load event.
+      const handleScriptLoad = () => {
+        if (window.google && window.google.maps) {
+          setIsGoogleLoaded(true);
+        }
+      };
+      script.addEventListener('load', handleScriptLoad);
+      
+      // Double check periodically in case of rapid race conditions
+      const interval = setInterval(() => {
+        if (window.google && window.google.maps) {
+          setIsGoogleLoaded(true);
+          clearInterval(interval);
+        }
+      }, 500);
+
+      return () => {
+        script.removeEventListener('load', handleScriptLoad);
+        clearInterval(interval);
+      };
+    }
+  }, [googleMapsKey, isGoogleLoaded]);
+
+  // Map Initialization
+  useEffect(() => {
+    if (!isGoogleLoaded || !mapRef.current || mapInstance) return;
+
+    try {
+      const initialCenter = new window.google.maps.LatLng(20.5937, 78.9629); // Center of India
+      const map = new window.google.maps.Map(mapRef.current, {
+        center: initialCenter,
+        zoom: 5,
+        styles: mapViewMode === 'operational' ? darkMapStyle : pureHeatmapStyle,
+        disableDefaultUI: true,
+        zoomControl: true,
+        streetViewControl: false,
+        mapTypeControl: false,
+        backgroundColor: '#0b1326'
+      });
+
+      // WAQI Tile overlay integration
+      const waqiTileOverlay = new window.google.maps.ImageMapType({
+        getTileUrl: function (coord, zoom) {
+          return `https://tiles.waqi.info/tiles/usepa-aqi/${zoom}/${coord.x}/${coord.y}.png?token=${waqiToken}`;
+        },
+        tileSize: new window.google.maps.Size(256, 256),
+        name: "WAQI Live Heatmap",
+        opacity: 0.55
+      });
+      map.overlayMapTypes.insertAt(0, waqiTileOverlay);
+
+      setMapInstance(map);
+
+      // Event listener to fetch point markers when map is idle
+      map.addListener("idle", () => {
+        fetchNearbyStations(map);
+      });
+
+    } catch (e) {
+      console.error("Error initializing Google Maps:", e);
+      setLoadError(true);
+    }
+  }, [isGoogleLoaded, mapInstance, waqiToken, fetchNearbyStations, mapViewMode]);
+
+  // Dynamic Map View Mode toggler
+  useEffect(() => {
+    if (!mapInstance) return;
+
+    if (mapViewMode === 'operational') {
+      mapInstance.setOptions({ styles: darkMapStyle });
+      fetchNearbyStations(mapInstance);
+    } else {
+      mapInstance.setOptions({ styles: pureHeatmapStyle });
+      // Clean up existing markers
+      activeMarkersRef.current.forEach(m => m.setMap(null));
+      activeMarkersRef.current = [];
+    }
+  }, [mapViewMode, mapInstance, fetchNearbyStations]);
 
   // Synchronous viewport coordinates update listening directly to optimized prop
   useEffect(() => {
@@ -236,11 +272,34 @@ function AeroMap({ pinCode, district, state, coordinates }) {
     }
   }, [coordinates, mapInstance]);
 
-  // Handle fallback rendering if keys are empty or maps fails to load
-  if (loadError || !googleMapsKey) {
-    return (
-      <div className="relative rounded-2xl overflow-hidden glass-panel h-[320px] border border-outline-variant/30 select-none">
-        <div className="absolute inset-0 bg-[#0b1326] flex flex-col justify-center items-center overflow-hidden">
+  return (
+    <div className="relative rounded-2xl overflow-hidden glass-panel h-[320px] border border-outline-variant/30">
+      {/* Toggle View Mode at Top-Right */}
+      <div className="absolute top-4 right-4 z-20 flex bg-[#171f33]/85 backdrop-blur-md rounded-lg border border-outline-variant/30 p-0.5 shadow-xl">
+        <button
+          onClick={() => setMapViewMode('operational')}
+          className={`px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-wider rounded transition-all ${
+            mapViewMode === 'operational'
+              ? 'bg-primary text-[#0b1326] shadow-lg scale-[1.02]'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-[#171f33]/50'
+          }`}
+        >
+          Infrastructure View
+        </button>
+        <button
+          onClick={() => setMapViewMode('pure')}
+          className={`px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-wider rounded transition-all ${
+            mapViewMode === 'pure'
+              ? 'bg-primary text-[#0b1326] shadow-lg scale-[1.02]'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-[#171f33]/50'
+          }`}
+        >
+          Pure Heatmap
+        </button>
+      </div>
+
+      {loadError || !googleMapsKey ? (
+        <div className="absolute inset-0 bg-[#0b1326] flex flex-col justify-center items-center overflow-hidden select-none">
           <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(#3c4a42 1.2px, transparent 1.2px)', backgroundSize: '16px 16px' }}></div>
           
           {/* Circular HUD radar rings */}
@@ -251,22 +310,26 @@ function AeroMap({ pinCode, district, state, coordinates }) {
           <div className="absolute w-full h-[1px] bg-primary/10 top-1/2 left-0 animate-scanline"></div>
 
           {/* Fallback pin point markers */}
-          <div className="absolute top-[32%] left-[38%] flex flex-col items-center">
-            <span className="w-3 h-3 rounded-full bg-error animate-ping absolute opacity-70"></span>
-            <span className="w-3 h-3 rounded-full bg-error relative border border-white"></span>
-            <span className="font-mono text-[7px] text-error font-bold mt-1 bg-background/80 px-1 rounded">Node-74 (AQI: 304)</span>
-          </div>
+          {mapViewMode === 'operational' && (
+            <>
+              <div className="absolute top-[32%] left-[38%] flex flex-col items-center">
+                <span className="w-3 h-3 rounded-full bg-error animate-ping absolute opacity-70"></span>
+                <span className="w-3 h-3 rounded-full bg-error relative border border-white"></span>
+                <span className="font-mono text-[7px] text-error font-bold mt-1 bg-background/80 px-1 rounded">Node-74 (AQI: 304)</span>
+              </div>
 
-          <div className="absolute top-[65%] left-[62%] flex flex-col items-center">
-            <span className="w-3 h-3 rounded-full bg-secondary animate-pulse absolute opacity-70"></span>
-            <span className="w-3 h-3 rounded-full bg-secondary relative border border-white"></span>
-            <span className="font-mono text-[7px] text-secondary font-bold mt-1 bg-background/80 px-1 rounded">Node-09 (AQI: 142)</span>
-          </div>
+              <div className="absolute top-[65%] left-[62%] flex flex-col items-center">
+                <span className="w-3 h-3 rounded-full bg-secondary animate-pulse absolute opacity-70"></span>
+                <span className="w-3 h-3 rounded-full bg-secondary relative border border-white"></span>
+                <span className="font-mono text-[7px] text-secondary font-bold mt-1 bg-background/80 px-1 rounded">Node-09 (AQI: 142)</span>
+              </div>
 
-          <div className="absolute top-[20%] left-[80%] flex flex-col items-center">
-            <span className="w-2.5 h-2.5 rounded-full bg-primary relative border border-white"></span>
-            <span className="font-mono text-[7px] text-primary font-bold mt-1 bg-background/80 px-1 rounded">Node-112 (AQI: 42)</span>
-          </div>
+              <div className="absolute top-[20%] left-[80%] flex flex-col items-center">
+                <span className="w-2.5 h-2.5 rounded-full bg-primary relative border border-white"></span>
+                <span className="font-mono text-[7px] text-primary font-bold mt-1 bg-background/80 px-1 rounded">Node-112 (AQI: 42)</span>
+              </div>
+            </>
+          )}
 
           <div className="z-10 text-center space-y-2 pointer-events-none px-4 bg-background/60 py-3 rounded-xl border border-outline-variant/10 max-w-sm">
             <span className="font-mono text-[10px] text-primary tracking-widest uppercase font-bold block">Dynamic GIS Radar Fallback</span>
@@ -275,22 +338,20 @@ function AeroMap({ pinCode, district, state, coordinates }) {
             </p>
           </div>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative rounded-2xl overflow-hidden glass-panel h-[320px] border border-outline-variant/30">
-      <div ref={mapRef} className="w-full h-full bg-[#0b1326]" />
-      
-      {/* Zoom HUD legend overlay */}
-      <div className="absolute bottom-4 left-4 right-4 glass-panel p-2.5 rounded-lg border border-outline-variant/40 flex items-center justify-between pointer-events-none bg-background/80 z-10">
-        <span className="font-mono text-[8px] text-on-surface-variant font-bold uppercase">USEPA AQI OVERLAY</span>
-        <div className="flex-grow max-w-[200px] h-2 rounded bg-gradient-to-r from-primary via-secondary to-error relative ml-4">
-          <span className="absolute -top-3.5 left-0 font-mono text-[6px] text-on-surface-variant font-bold">GOOD</span>
-          <span className="absolute -top-3.5 right-0 font-mono text-[6px] text-on-surface-variant font-bold">HAZARD</span>
-        </div>
-      </div>
+      ) : (
+        <>
+          <div ref={mapRef} className="w-full h-full bg-[#0b1326]" />
+          
+          {/* Zoom HUD legend overlay */}
+          <div className="absolute bottom-4 left-4 right-4 glass-panel p-2.5 rounded-lg border border-outline-variant/40 flex items-center justify-between pointer-events-none bg-background/80 z-10">
+            <span className="font-mono text-[8px] text-on-surface-variant font-bold uppercase">USEPA AQI OVERLAY</span>
+            <div className="flex-grow max-w-[200px] h-2 rounded bg-gradient-to-r from-primary via-secondary to-error relative ml-4">
+              <span className="absolute -top-3.5 left-0 font-mono text-[6px] text-on-surface-variant font-bold">GOOD</span>
+              <span className="absolute -top-3.5 right-0 font-mono text-[6px] text-on-surface-variant font-bold">HAZARD</span>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

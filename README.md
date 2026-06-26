@@ -1,4 +1,4 @@
-# AeroSight AI - Mission Control Dashboard
+# Haze Analyzer - Mission Control Dashboard
 
 A premium, clinical-grade environmental telemetry heads-up display (HUD) and neural analysis dashboard. Designed as a "Mission Control" center for high-precision atmospheric monitoring, particulate modeling, and optical computer vision scanning.
 
@@ -33,7 +33,7 @@ A premium, clinical-grade environmental telemetry heads-up display (HUD) and neu
 
 ## 🎨 Design System Specs
 
-AeroSight AI utilizes the **"Deep Night"** professional palette paired with clinical, anticipated typography systems:
+Haze Analyzer utilizes the **"Deep Night"** professional palette paired with clinical, anticipated typography systems:
 
 - **Colors**:
   - `Primary / Emerald-400` (`#5af0b3`): Operational, nominal nodes, active link states.
@@ -54,15 +54,15 @@ AeroSight AI utilizes the **"Deep Night"** professional palette paired with clin
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/Draavith-DNA/AeroLense.git
-cd AeroLense
+git clone https://github.com/Draavith-DNA/Haze_Analyzer.git
+cd Haze_Analyzer
 npm install
 ```
 
 ### 2. Environment Variables Configuration
 To load live Google Maps GIS and WAQI station layers, create a `.env` file in the root directory:
 ```env
-# AeroSight AI Telemetry - API Hooks
+# Haze Analyzer Telemetry - API Hooks
 VITE_GOOGLE_MAPS_KEY=YOUR_GOOGLE_MAPS_API_KEY
 VITE_WAQI_TOKEN=YOUR_WAQI_API_TOKEN
 ```

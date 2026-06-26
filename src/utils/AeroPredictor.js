@@ -22,7 +22,7 @@ export const loadTensorFlow = async () => {
         reject(new Error("tf object not found on window after script load"));
       }
     };
-    script.onerror = (err) => {
+    script.onerror = () => {
       reject(new Error("Failed to load TensorFlow.js from CDN."));
     };
     document.head.appendChild(script);
