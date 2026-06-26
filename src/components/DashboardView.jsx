@@ -40,6 +40,7 @@ function DashboardView() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const canvasRef = useRef(null);
+  const latestPinRef = useRef('');
 
   // Keep region in sync for canvas HUD telemetry and fallback references locally
   const region = (() => {
@@ -443,9 +444,10 @@ function DashboardView() {
   }, [fetchLiveWeather]);
 
   // Pin Code auto-resolve via local 3-digit prefix lookup engine
-  const handlePinChange = (e) => {
+  const handlePinChange = async (e) => {
     const val = e.target.value;
     setPinCode(val);
+    latestPinRef.current = val;
 
     if (val.length !== 6) {
       setDistrict('Awaiting PIN...');
@@ -457,24 +459,116 @@ function DashboardView() {
     if (/^\d{6}$/.test(val)) {
       const prefix = val.slice(0, 3);
       const match = PINCODE_PREFIX_MAP[prefix];
-      if (match) {
-        setDistrict(match.district);
-        setState(match.state);
-        setCoordinates({ lat: match.lat, lng: match.lng, zoom: 11 });
-        
-        // Asynchronously fetch weather data with offline local fallback
-        fetchLiveWeather(match.lat, match.lng, match.temp, match.humidity);
-      } else {
-        setDistrict('Invalid PIN');
-        setState('Invalid PIN');
-        setCoordinates({ lat: 20.5937, lng: 78.9629, zoom: 5 }); // Safe default Center of India
-        setTemperature(27); // Baseline default fallback
-        setHumidity(60);   // Baseline default fallback
+
+      setDistrict('Resolving...');
+      setState('Resolving...');
+
+      try {
+        const response = await fetch(`https://api.postalpincode.in/pincode/${val}`);
+        if (!response.ok) throw new Error("API network response was not ok");
+        const data = await response.json();
+
+        // Check if this request is still the latest typed pincode
+        if (latestPinRef.current !== val) return;
+
+        if (data && data[0] && data[0].Status === "Success" && data[0].PostOffice && data[0].PostOffice.length > 0) {
+          const firstOffice = data[0].PostOffice[0];
+          const resolvedDistrict = firstOffice.District;
+          const resolvedState = firstOffice.State;
+
+          setDistrict(resolvedDistrict);
+          setState(resolvedState);
+
+          // Helper function for geocoding coordinates of the resolved District & State
+          const resolveGeoLocation = async () => {
+            let geoLat = null;
+            let geoLng = null;
+
+            // 1. Try Google Maps Geocoder if Google Maps JS SDK is loaded
+            if (window.google && window.google.maps && window.google.maps.Geocoder) {
+              try {
+                const geocoder = new window.google.maps.Geocoder();
+                const geoResult = await new Promise((resolveGeo) => {
+                  geocoder.geocode({ address: `${resolvedDistrict}, ${resolvedState}, India` }, (results, status) => {
+                    if (status === 'OK' && results[0]) {
+                      const loc = results[0].geometry.location;
+                      resolveGeo({ lat: loc.lat(), lng: loc.lng() });
+                    } else {
+                      resolveGeo(null);
+                    }
+                  });
+                });
+                if (geoResult) {
+                  geoLat = geoResult.lat;
+                  geoLng = geoResult.lng;
+                }
+              } catch (geoErr) {
+                console.warn("Google Maps Geocoder failed, falling back:", geoErr);
+              }
+            }
+
+            // 2. Try Nominatim (OpenStreetMap) if Google Geocoder wasn't successful or loaded
+            if (geoLat === null || geoLng === null) {
+              try {
+                const nominatimRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(`${resolvedDistrict}, ${resolvedState}, India`)}&limit=1`);
+                if (nominatimRes.ok) {
+                  const nominatimData = await nominatimRes.json();
+                  if (nominatimData && nominatimData.length > 0) {
+                    geoLat = parseFloat(nominatimData[0].lat);
+                    geoLng = parseFloat(nominatimData[0].lon);
+                  }
+                }
+              } catch (nomErr) {
+                console.warn("Nominatim geocoding fallback failed:", nomErr);
+              }
+            }
+
+            // Verify again if this request is still the latest one before setting coordinates
+            if (latestPinRef.current !== val) return;
+
+            if (geoLat !== null && geoLng !== null) {
+              setCoordinates({ lat: geoLat, lng: geoLng, zoom: 11 });
+              fetchLiveWeather(geoLat, geoLng, match?.temp || 27, match?.humidity || 60);
+            } else {
+              // Last resort fallback: local prefix map or center of India
+              if (match) {
+                setCoordinates({ lat: match.lat, lng: match.lng, zoom: 11 });
+                fetchLiveWeather(match.lat, match.lng, match.temp, match.humidity);
+              } else {
+                setCoordinates({ lat: 20.5937, lng: 78.9629, zoom: 5 });
+                fetchLiveWeather(20.5937, 78.9629, 27, 60);
+              }
+            }
+          };
+
+          await resolveGeoLocation();
+          return;
+        } else {
+          throw new Error("Invalid pincode response from API");
+        }
+      } catch (err) {
+        console.warn("Pincode API failed, trying offline/local prefix match fallback:", err);
+
+        if (latestPinRef.current !== val) return;
+
+        // Fallback to local map if API fails
+        if (match) {
+          setDistrict(match.district);
+          setState(match.state);
+          setCoordinates({ lat: match.lat, lng: match.lng, zoom: 11 });
+          fetchLiveWeather(match.lat, match.lng, match.temp, match.humidity);
+        } else {
+          setDistrict('Invalid PIN');
+          setState('Invalid PIN');
+          setCoordinates({ lat: 20.5937, lng: 78.9629, zoom: 5 });
+          setTemperature(27);
+          setHumidity(60);
+        }
       }
     } else {
       setDistrict('Invalid PIN');
       setState('Invalid PIN');
-      setCoordinates({ lat: 20.5937, lng: 78.9629, zoom: 5 }); // Safe default Center of India
+      setCoordinates({ lat: 20.5937, lng: 78.9629, zoom: 5 });
       setTemperature(27);
       setHumidity(60);
     }
