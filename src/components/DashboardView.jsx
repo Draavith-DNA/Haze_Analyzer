@@ -35,6 +35,11 @@ function DashboardView() {
   // Camera state management
   const [capturedImage, setCapturedImage] = useState(null);
   const [cameraState, setCameraState] = useState('inactive'); // 'inactive' | 'linking' | 'active'
+  const [cameraStreamActive, setCameraStreamActive] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
+
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
 
   // Image Processing state
   const [isProcessing, setIsProcessing] = useState(false);
@@ -371,19 +376,100 @@ function DashboardView() {
     return () => clearInterval(interval);
   }, [capturedImage, drawHeatmap]);
 
-  const handleLaunchCamera = () => {
+  const stopCamera = () => {
+    if (streamRef.current) {
+      try {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      } catch (err) {
+        console.warn("Error stopping camera tracks:", err);
+      }
+      streamRef.current = null;
+    }
+    setCameraStreamActive(false);
+  };
+
+  // Cleanup camera streams on unmount
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
+  // Bind camera stream dynamically to video element when viewfinder mounts
+  useEffect(() => {
+    if (cameraState === 'active' && cameraStreamActive && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [cameraState, cameraStreamActive]);
+
+  const handleLaunchCamera = async () => {
     setCameraState('linking');
-    setTimeout(() => {
-      setCameraState('active');
-    }, 1500);
+    setCameraError(null);
+    
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Camera API not supported in this browser context");
+      }
+
+      // Race getUserMedia against a 3-second timeout to prevent indefinite hangs in headless testing
+      const streamPromise = navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
+      });
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Camera access timed out")), 3000)
+      );
+
+      const stream = await Promise.race([streamPromise, timeoutPromise]);
+      streamRef.current = stream;
+      setCameraStreamActive(true);
+      
+      setTimeout(() => {
+        setCameraState('active');
+      }, 1000);
+    } catch (err) {
+      console.warn("Failed to request native device camera, using simulator mode fallback:", err);
+      setCameraError(err.name === 'NotAllowedError' ? 'Permission Denied' : err.message || 'Insecure Context');
+      setCameraStreamActive(false);
+      
+      setTimeout(() => {
+        setCameraState('active');
+      }, 1000);
+    }
   };
 
   const handleCapturePhoto = () => {
-    const dataUrl = generateMockPhoto();
-    setCapturedImage(dataUrl);
+    if (cameraStreamActive && streamRef.current && videoRef.current) {
+      try {
+        const video = videoRef.current;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        setCapturedImage(dataUrl);
+      } catch (err) {
+        console.error("Failed to capture frame from live video stream. Falling back to simulator mode:", err);
+        const dataUrl = generateMockPhoto();
+        setCapturedImage(dataUrl);
+      }
+    } else {
+      const dataUrl = generateMockPhoto();
+      setCapturedImage(dataUrl);
+    }
+    
+    stopCamera();
     setCameraState('inactive');
     setIsProcessing(true);
     setProcessingProgress(0);
+  };
+
+  const handleCancelCamera = () => {
+    stopCamera();
+    setCameraState('inactive');
+    setCameraError(null);
   };
 
   const handleResetCamera = () => {
@@ -391,6 +477,7 @@ function DashboardView() {
     setCameraState('inactive');
     setIsProcessing(false);
     setProcessingProgress(0);
+    setCameraError(null);
   };
 
   const handleFileUpload = (e) => {
@@ -623,30 +710,62 @@ function DashboardView() {
 
             {cameraState === 'active' && (
               <div className="space-y-4">
-                {/* Simulated Camera Viewfinder */}
-                <div className="relative rounded-lg overflow-hidden h-40 border border-primary/30 bg-surface-container-lowest/50 flex flex-col justify-center items-center">
-                  <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1.2px,transparent_1.2px)] [background-size:12px_12px]"></div>
+                {/* Viewfinder: Real Video Stream or Simulator Fallback */}
+                <div className="relative rounded-lg overflow-hidden h-52 border border-primary/30 bg-surface-container-lowest/50 flex flex-col justify-center items-center">
+                  {cameraStreamActive ? (
+                    <video 
+                      ref={videoRef} 
+                      autoPlay 
+                      playsInline 
+                      muted
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <>
+                      <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1.2px,transparent_1.2px)] [background-size:12px_12px]"></div>
+                      <span className="material-symbols-outlined text-primary text-3xl animate-pulse" style={{ fontVariationSettings: "'FILL' 1" }}>center_focus_strong</span>
+                      <span className="font-mono text-[9px] text-primary/60 mt-1 uppercase tracking-widest animate-pulse">Simulator Active</span>
+                    </>
+                  )}
                   
-                  {/* Panning line reticle */}
-                  <div className="absolute top-[20%] w-[80%] h-[1px] bg-primary/20 border-dashed border-b animate-pulse"></div>
-                  <div className="absolute top-[80%] w-[80%] h-[1px] bg-primary/20 border-dashed border-b animate-pulse"></div>
-                  <div className="absolute left-[20%] h-[80%] w-[1px] bg-primary/20 border-dashed border-r"></div>
-                  <div className="absolute left-[80%] h-[80%] w-[1px] bg-primary/20 border-dashed border-r"></div>
+                  {/* Viewfinder Overlay telemetry */}
+                  <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-3">
+                    <div className="flex justify-between items-start">
+                      <span className="font-mono text-[8px] text-primary/80 bg-[#0b1326]/60 px-1.5 py-0.5 rounded border border-primary/25 uppercase tracking-widest">
+                        {cameraStreamActive ? 'Live Camera Feed' : 'Simulator Mode'}
+                      </span>
+                      {cameraError && (
+                        <span className="font-mono text-[8px] text-error bg-[#0b1326]/60 px-1.5 py-0.5 rounded border border-error/25 uppercase">
+                          {cameraError}
+                        </span>
+                      )}
+                    </div>
 
-                  <span className="material-symbols-outlined text-primary text-3xl animate-pulse" style={{ fontVariationSettings: "'FILL' 1" }}>center_focus_strong</span>
-                  <span className="font-mono text-[9px] text-primary/60 mt-1 uppercase tracking-widest animate-pulse">Live Viewfinder Active</span>
+                    {/* HUD Reticle */}
+                    <div className="self-center flex items-center justify-center relative w-full h-[60%]">
+                      <div className="absolute top-[20%] w-[80%] h-[1px] bg-primary/25 border-dashed border-b"></div>
+                      <div className="absolute top-[80%] w-[80%] h-[1px] bg-primary/25 border-dashed border-b"></div>
+                      <div className="absolute left-[20%] h-[80%] w-[1px] bg-primary/25 border-dashed border-r"></div>
+                      <div className="absolute left-[80%] h-[80%] w-[1px] bg-primary/25 border-dashed border-r"></div>
+                      <span className="material-symbols-outlined text-primary text-xl opacity-60">add</span>
+                    </div>
+                    
+                    <span className="font-mono text-[7px] text-on-surface-variant/60 uppercase tracking-tighter">
+                      FACING_MODE: ENVIRONMENT
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex gap-2">
                   <button 
                     onClick={handleCapturePhoto}
-                    className="flex-1 bg-secondary text-on-secondary py-3 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform hover:bg-secondary-container"
+                    className="flex-1 bg-secondary text-on-secondary py-3 rounded-lg font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform hover:bg-secondary-container shadow-lg shadow-secondary/15"
                   >
                     <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>photo_camera</span>
-                    Click a photo
+                    Capture Frame
                   </button>
                   <button 
-                    onClick={() => setCameraState('inactive')}
+                    onClick={handleCancelCamera}
                     className="px-4 bg-surface-container-high text-on-surface-variant py-3 rounded-lg font-semibold active:scale-95 transition-transform hover:bg-surface-variant"
                   >
                     Cancel
